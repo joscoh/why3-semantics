@@ -253,7 +253,7 @@ Definition semantic_constr {m: mut_adt} (m_in : mut_in_ctx m gamma)
   d = dom_cast (dom_aux pd) (*Need 2 casts*)
     (eq_sym (v_subst_cons (adt_name a) args)) 
   (scast 
-    (eq_sym (adts pdf m (map (v_subst vt) args) a m_in a_in))
+    (eq_sym (adts pdf m (map (v_subst vt) args) a m_in a_in (eq_trans (length_map _ _) args_len)))
   (* [[c]](al)*)
   (constr_rep gamma_valid m m_in 
     (map (v_subst vt) args) (eq_trans (length_map _ _) args_len) (dom_aux pd) a a_in 
@@ -285,7 +285,8 @@ Proof.
   (*Of course, use [find_constr_rep]*)
   destruct (find_constr_rep gamma_valid _ m_in (map (v_subst vt) args) srts_len (dom_aux pd) a a_in
     (adts pdf m (map (v_subst vt) args)) Hunif
-    (scast (adts pdf m (map (v_subst vt) args) a m_in a_in) (dom_cast (dom_aux pd) (v_subst_cons (adt_name a) args) 
+    (scast (adts pdf m (map (v_subst vt) args) a m_in a_in (eq_trans (length_map (v_subst vt) args) args_len)) 
+      (dom_cast (dom_aux pd) (v_subst_cons (adt_name a) args) 
       d))) as [f [[c_in al] Hrep]]. simpl in Hrep.
   apply (existT f).
   apply (exist _ (c_in , al)). simpl.

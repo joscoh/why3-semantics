@@ -152,14 +152,14 @@ Inductive adt_smaller:
     (c_in: constr_in_adt c a2)
     (lengths_eq: length srts = length (m_params m)),
     let adt2 : adt_rep m srts (dom_aux pd) a2 a_in2 :=
-      scast (Interp.adts pdf m srts a2 m_in a_in2) (dom_cast _ Hty2 d2) in
+      scast (Interp.adts pdf m srts a2 m_in a_in2 lengths_eq) (dom_cast _ Hty2 d2) in
     let adt1: adt_rep m srts (dom_aux pd) a1 a_in1 :=
-      scast (Interp.adts pdf m srts a1 m_in a_in1) (dom_cast _ Hty1 d1) in
+      scast (Interp.adts pdf m srts a1 m_in a_in1 lengths_eq) (dom_cast _ Hty1 d1) in
     forall (Hadt2: adt2 = constr_rep gamma_valid m m_in srts
       lengths_eq (dom_aux pd) a2 a_in2 c c_in (Interp.adts pdf m srts) args),
     (exists i Heq, 
     i < length (s_args c) /\
-    adt1 = scast (Interp.adts pdf m srts a1 m_in a_in1) 
+    adt1 = scast (Interp.adts pdf m srts a1 m_in a_in1 lengths_eq) 
       (dom_cast (dom_aux pd) Heq (hnth i args s_int (dom_int pd)))) ->
     adt_smaller x1 x2.
 
@@ -205,12 +205,12 @@ Proof.
   pose proof (proj1' (proj2' adt_spec)) as a_in.
   pose proof (proj1' (proj2' (proj2' adt_spec))) as m_in.
   clear adt_spec.
-  remember (scast (Interp.adts pdf m srts a m_in a_in) (dom_cast _ Hseq d)) as adt.
+  remember (scast (Interp.adts pdf m srts a m_in a_in Hlen) (dom_cast _ Hseq d)) as adt.
   revert Heqadt.
   unfold dom_cast. rewrite scast_scast. intros Hd.
   apply scast_rev in Hd.
   generalize dependent ((eq_sym
-  (eq_trans (f_equal domain Hseq) (Interp.adts pdf m srts a m_in a_in)))).
+  (eq_trans (f_equal domain Hseq) (Interp.adts pdf m srts a m_in a_in Hlen)))).
   intros Heqadt Hd. subst d.
   (*Here, we use induction*)
   apply (adt_rep_ind gamma_valid pdf m m_in srts Hlen (fun t t_in x =>
@@ -259,7 +259,7 @@ Proof.
   subst a_in2.
   assert (eq_trans Heq
   (eq_trans (f_equal domain Hty2)
-     (Interp.adts pdf m srts a2 m_in t_in)) = eq_refl). {
+     (Interp.adts pdf m srts a2 m_in t_in Hlen)) = eq_refl). {
   (*HERE, we need UIP*)
     clear. apply Cast.UIP. }
   rewrite H in Hadt2. simpl in Hadt2.
@@ -275,7 +275,7 @@ Proof.
   subst args0.
   (*Now, we can apply the IH*)
   specialize (IH _ _ a_in1 Heqith Hi (s_cons (adt_name a1) srts)
-    (eq_sym ((Interp.adts pdf m srts a1 m_in a_in1))) eq_refl).
+    (eq_sym ((Interp.adts pdf m srts a1 m_in a_in1 Hlen))) eq_refl).
   (*We don't need UIP here if we build a proof term carefully*)
   match goal with
   | H: Acc ?y (existT ?ty1 ?x1) |- Acc ?y (existT ?ty2 ?x2) =>

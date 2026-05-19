@@ -1023,7 +1023,7 @@ Definition args_to_constr_base (a: arg_list domain sigma_args):
 (*We assume that the domain of all adts is given by [adt_rep]
   (which we will require of all possible valid domains)*)
 Variable dom_adts: forall (a: alg_datatype) (m_in: mut_in_ctx m gamma) 
-  (Hin: adt_in_mut a m),
+  (Hin: adt_in_mut a m) (srts_len: length srts = length (m_params m)),
   domain (s_cons (adt_name a) srts) =
   adt_rep a Hin.
 
@@ -1032,12 +1032,12 @@ Lemma dom_adts_fin: forall (x: finite (length adts)),
   domain (s_cons (adt_name (fin_nth adts x)) srts) =
   mk_adts var_map typesym_map adts x.
 Proof.
-  intros. rewrite dom_adts. apply In_in_bool. apply fin_nth_in.
+  intros. rewrite dom_adts; auto. apply In_in_bool. apply fin_nth_in.
   intros Hin.
   unfold adt_rep.
   f_equal.
   rewrite get_idx_fin. reflexivity.
-  apply (adts_nodups gamma_valid m_in). assumption.
+  apply (adts_nodups gamma_valid m_in).
 Qed.
 
 (*To build the recursive instance function, we do the following: 
@@ -1151,7 +1151,7 @@ Definition constr_rep_dom (a: arg_list domain (sym_sigma_args c srts)) :
   domain (funsym_sigma_ret c srts) := 
   scast 
     (*equality proof*)
-    (etrans (esym (dom_adts t m_in t_in)) 
+    (etrans (esym (dom_adts t m_in t_in srts_len)) 
       (f_equal domain (adt_typesym_funsym gamma_valid m_in t_in c_in srts_len))
     ) 
     (*the real value*)
@@ -1546,7 +1546,7 @@ Proof.
         destruct (ts_in_mut_list_ex t0 m Hind). destruct a.
         assert (domain (sigma (vty_cons t0 l0)) = adt_rep x H0). {
           rewrite sigma_cons. rewrite split_arg_func_lemma2.
-          rewrite H. apply dom_adts. exact m_in. exact t0. exact Hl0.
+          rewrite H. apply dom_adts. exact m_in. exact srts_len. exact t0. exact Hl0.
         }
         apply (exist _ (HL_cons domain (sigma (vty_cons t0 l0)) _ 
           (get_ind_arg t0 l0 l x H0 H Hl0 H1 i Hi) atl)).
@@ -1707,7 +1707,7 @@ End Constr.
   semantics do not need to directly reason about finite types,
   W-types, or the explicit functions above.*)
 Variable dom_adts: forall (a: alg_datatype) (m_in: mut_in_ctx m gamma) 
-(Hin: adt_in_mut a m)  ,
+(Hin: adt_in_mut a m) (srts_len: length srts = length (m_params m)) ,
 domain (s_cons (adt_name a) srts) =
 adt_rep a Hin.
 
@@ -1975,10 +1975,12 @@ Lemma constr_rep_change_gamma {gamma1 gamma2: context}
   (t_in : adt_in_mut t m)
   (c: funsym)
   (c_in: constr_in_adt c t)
-  (adts1: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) (Hin : adt_in_mut a m),
+  (adts1: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) (Hin : adt_in_mut a m)
+    (srts_length: length srts = length (m_params m)),
   domain domain_aux (s_cons (adt_name a) srts) =
   adt_rep m srts domain_aux a Hin)
-  (adts2: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) (Hin : adt_in_mut a m),
+  (adts2: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) (Hin : adt_in_mut a m)
+    (srts_length: length srts = length (m_params m)),
   domain domain_aux (s_cons (adt_name a) srts) =
   adt_rep m srts domain_aux a Hin)
   (a: arg_list (domain domain_aux) (sym_sigma_args c srts)):
@@ -2007,11 +2009,11 @@ Lemma find_constr_rep_change_gamma {gamma1 gamma2: context}
   (domain_aux : Types.sort -> Set) (t : alg_datatype)
   (t_in : adt_in_mut t m)
   (dom_adts1 : forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) 
-              (Hin : adt_in_mut a m),
+              (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
               domain domain_aux (s_cons (adt_name a) srts) =
               adt_rep m srts domain_aux a Hin)
   (dom_adts2 : forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) 
-              (Hin : adt_in_mut a m),
+              (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
               domain domain_aux (s_cons (adt_name a) srts) =
               adt_rep m srts domain_aux a Hin)
   (m_unif: uniform m)
@@ -2072,7 +2074,7 @@ Lemma constr_rep_inj_iff_strong {gamma} (gamma_valid: valid_context gamma) {m a 
   {srts} (srts_len: length srts = length (m_params m)) (domain_aux: Types.sort -> Set)
   (dom_adts : forall a : alg_datatype,
                      mut_in_ctx m gamma ->
-                     forall Hin : adt_in_mut a m,
+                     forall (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
                      domain domain_aux (s_cons (adt_name a) srts) =
                      adt_rep m srts domain_aux a Hin)
   (a1: arg_list (domain domain_aux) (sym_sigma_args c1 srts))
@@ -2096,7 +2098,7 @@ Lemma constr_rep_inj_iff {gamma} (gamma_valid: valid_context gamma) {m a c}
   {srts} (srts_len: length srts = length (m_params m)) (domain_aux: Types.sort -> Set)
   (dom_adts : forall a : alg_datatype,
                      mut_in_ctx m gamma ->
-                     forall Hin : adt_in_mut a m,
+                     forall (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
                      domain domain_aux (s_cons (adt_name a) srts) =
                      adt_rep m srts domain_aux a Hin)
   (a1 a2: arg_list (domain domain_aux) (sym_sigma_args c srts)):

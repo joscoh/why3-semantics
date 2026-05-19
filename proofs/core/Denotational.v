@@ -589,17 +589,17 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
         eq_trans (f_equal (val v) Htyeq)
           (v_subst_cons (adt_name a) vs) in
 
-      (*We cast to get an ADT, now that we know that this actually is
-          an ADT*)
-      let adt : adt_rep m srts (dom_aux pd) a a_in :=
-        scast (adts pdf m srts a m_in a_in) (dom_cast _ 
-          valeq d) in
-
       (*Need a lemma about lengths for [find_constr_rep]*)
       let lengths_eq : length srts = length (m_params m) := 
         eq_trans (length_map _ _)
           (adt_vty_length_eq gamma gamma_valid Hisadt 
           (pat_has_type_valid _ _ _ Hty')) in
+
+      (*We cast to get an ADT, now that we know that this actually is
+          an ADT*)
+      let adt : adt_rep m srts (dom_aux pd) a a_in :=
+        scast (adts pdf m srts a m_in a_in lengths_eq) (dom_cast _ 
+          valeq d) in
 
       (*The key part: get the constructor c and arg_list a
           such that d = [[c(a)]]*)
@@ -772,14 +772,14 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
         eq_trans (f_equal (val v) Htyeq)
           (v_subst_cons (adt_name a) vs) in
 
-      let adt : adt_rep m srts (dom_aux pd) a a_in :=
-        scast (adts pdf m srts a m_in a_in) (dom_cast _ 
-          valeq d) in
-
       let lengths_eq : length srts = length (m_params m) := 
         eq_trans (length_map _ _)
           (adt_vty_length_eq gamma gamma_valid Hisadt 
           (pat_has_type_valid _ _ _ Hty')) in
+
+      let adt : adt_rep m srts (dom_aux pd) a a_in :=
+        scast (adts pdf m srts a m_in a_in lengths_eq) (dom_cast _ 
+          valeq d) in
 
       let Hrep := find_constr_rep gamma_valid m m_in srts lengths_eq 
         (dom_aux pd) a a_in (adts pdf m srts) 
@@ -891,7 +891,8 @@ Lemma match_val_single_ind
         (Hvslen2)) 
     (dom_aux pd) adt Hinmut (adts pdf m (map (val v) vs2)) 
     (gamma_all_unif gamma_valid m Hinctx)
-    (scast (adts pdf m (map (val v) vs2) adt Hinctx Hinmut)
+    (scast (adts pdf m (map (val v) vs2) adt Hinctx Hinmut (eq_trans (length_map (val v) vs2)
+        (Hvslen2)) )
         (dom_cast (dom_aux pd)
           (eq_trans (f_equal (val v) Htyeq) 
           (v_subst_cons (adt_name adt) vs2)) d))) <>
@@ -914,7 +915,8 @@ Lemma match_val_single_ind
   (Hval: valid_type gamma (vty_cons (adt_name adt) vs2))
   (a: arg_list domain (ty_subst_list_s (s_params f) (map (val v) vs2) 
     (s_args f)))
-  (e: scast (adts pdf m (map (val v) vs2) adt Hinctx Hinmut)
+  (e: scast (adts pdf m (map (val v) vs2) adt Hinctx Hinmut
+        (eq_trans (length_map (val v) vs2) (Hvslen2 m adt vs2 eq_refl Hval)))
         (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d) =
       constr_rep gamma_valid m Hinctx (map (val v) vs2)
         (eq_trans (length_map (val v) vs2) (Hvslen2 m adt vs2 eq_refl Hval)) 
@@ -2487,7 +2489,7 @@ Theorem tm_fmla_change_vt (t: term) (f: formula):
     (Hvt: forall x, aset_mem x (tm_type_vars t) -> vt1 x = vt2 x)
     (Hvv: forall x (Hinx: aset_mem x (tm_fv t)) 
       (*NOTE: can use (vv_cast_tm1) for cast, but easier to prove
-        more general*)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+        more general*)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
       (Heq: v_subst vt1 (snd x) = v_subst vt2 (snd x)), vv2 x = 
       (dom_cast (dom_aux pd) Heq (vv1 x)))
     (ty: vty)

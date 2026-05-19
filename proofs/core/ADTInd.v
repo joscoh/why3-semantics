@@ -451,7 +451,7 @@ Theorem adt_rep_ind m m_in srts
       Hc (Interp.adts pdf m srts) a),
     (forall i t' t_in' Heq, i < length (s_args c) ->
       (*If nth i a has type adt_rep ..., then P holds of it*)
-      P t' t_in' (scast (Interp.adts pdf m srts t' m_in t_in') 
+      P t' t_in' (scast (Interp.adts pdf m srts t' m_in t_in' Hlen) 
         (dom_cast _ Heq (hnth i a s_int (dom_int pd)))) 
       ) ->
     P t t_in x
@@ -605,7 +605,7 @@ Proof.
     (cast_w (cast_i m m_in (get_idx adt_dec t' (typs m) t_in'))
       (f (get_idx adt_dec t' (typs m) t_in')
         br))) =
-            (scast (Interp.adts pdf m srts t' m_in t_in')
+            (scast (Interp.adts pdf m srts t' m_in t_in' Hlen)
             (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd))))). {
     unfold cast_adt_rep. rewrite cast_w_twice. 2: apply finite_eq_dec.
     (*Now we need to know something about f, again by
@@ -750,7 +750,7 @@ Proof.
     unfold args_to_ind_base, args_to_ind_base_aux.
     subst fin.
     (*need a default adt*)
-    set (d_adt:= scast (Interp.adts pdf m srts t' m_in t_in')
+    set (d_adt:= scast (Interp.adts pdf m srts t' m_in t_in' Hlen)
     (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd)))).
     (*1. Push through [tup_of_list]*)
     rewrite tnthS_tup_of_list with(d:=d_adt).

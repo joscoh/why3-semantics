@@ -271,18 +271,6 @@ Proof.
   assert (Heq: v_subst vt (vty_cons (adt_name a) vs) = s_cons (adt_name a) (map (v_subst vt) vs)). {
     apply sort_inj; simpl. rewrite !map_map. auto.
   }
-  set (d':= scast (adts pdf m (map (v_subst vt) vs) a m_in a_in) (dom_cast (dom_aux pd) Heq d)).
-  assert (d = scast (eq_trans (eq_sym (adts pdf m (map (v_subst vt) vs) a m_in a_in))
-    (eq_sym (f_equal (domain (dom_aux pd)) Heq))) d'). {
-      unfold d'. unfold dom_cast. rewrite !scast_scast.
-      (*Could do without UIP but ok*)
-      rewrite scast_refl_uip. auto.
-  }
-  rewrite H2. clear H2.
-  match goal with
-  | |- is_true (formula_rep ?val ?pd ?pdf ?vt ?pf ?vv ?f ?Hty) => generalize dependent Hty end.
-  generalize dependent (eq_trans (eq_sym (adts pdf m (map (v_subst vt) vs) a m_in a_in))
-  (eq_sym (f_equal (domain (dom_aux pd)) Heq))).
   assert (Hlen: Datatypes.length (map (v_subst vt) vs) = Datatypes.length (m_params m)).
   {
     destruct t_wf. simpl_task.
@@ -293,6 +281,18 @@ Proof.
     rewrite length_map, H8. f_equal. 
     apply (adt_args gamma_valid m_in a_in).
   }
+  set (d':= scast (adts pdf m (map (v_subst vt) vs) a m_in a_in Hlen) (dom_cast (dom_aux pd) Heq d)).
+  assert (d = scast (eq_trans (eq_sym (adts pdf m (map (v_subst vt) vs) a m_in a_in Hlen))
+    (eq_sym (f_equal (domain (dom_aux pd)) Heq))) d'). {
+      unfold d'. unfold dom_cast. rewrite !scast_scast.
+      (*Could do without UIP but ok*)
+      rewrite scast_refl_uip. auto.
+  }
+  rewrite H2. clear H2.
+  match goal with
+  | |- is_true (formula_rep ?val ?pd ?pdf ?vt ?pf ?vv ?f ?Hty) => generalize dependent Hty end.
+  generalize dependent (eq_trans (eq_sym (adts pdf m (map (v_subst vt) vs) a m_in a_in Hlen))
+  (eq_sym (f_equal (domain (dom_aux pd)) Heq))).
   (*Now, we will apply our induction theorem for ADTs*)
   apply (adt_rep_ind gamma_valid pdf m m_in (map (v_subst vt) vs) Hlen
     (fun t t_in a => 
@@ -424,7 +424,8 @@ Proof.
              (ty_subst_list' (s_params c) vs (s_args c))))) (vty_cons (adt_name a) vs)).
     {
       apply constr_case_goal_ty with(m:=m); auto.
-      rewrite length_map in Hlen; auto.
+      assert (Hlen':=Hlen).
+      rewrite length_map in Hlen'; auto.
     }
     erewrite safe_sub_f_rep.
     Unshelve.
@@ -453,7 +454,8 @@ Proof.
       apply funsym_subst_eq; auto.
       apply s_params_Nodup.
       rewrite (adt_constr_params gamma_valid m_in a_in c_in);
-      rewrite length_map in Hlen; auto.
+      assert (Hlen':=Hlen).
+      rewrite length_map in Hlen'; auto.
     }
     assert (Hty2: term_has_type gamma
     (nth i
@@ -587,7 +589,8 @@ Proof.
         * simpl. unfold typesyms_of_mut. rewrite in_map_iff.
           exists a; split; auto. clear -a_in. apply in_bool_In in a_in; auto.
       + rewrite (adt_args gamma_valid m_in a_in); auto.
-        rewrite length_map in Hlen; auto.
+        assert (Hlen':=Hlen).
+        rewrite length_map in Hlen'; auto.
       + rewrite <- Forall_forall; auto.
     }
     erewrite safe_sub_f_rep.

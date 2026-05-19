@@ -134,7 +134,7 @@ Definition get_hd_adt_rep {m a f} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a
   (Heq: sym_sigma_args f srts = [s_cons (adt_name a) srts]):
   { x: adt_rep m srts (dom_aux pd) a a_in |
     args = cast_arg_list (eq_sym Heq)
-      (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in)) x) (HL_nil _))}.
+      (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in srts_len)) x) (HL_nil _))}.
 Proof.
   (*This proof can be opaque, since we give the rewrite rule in a sigma type*)
   generalize dependent args.
@@ -143,7 +143,7 @@ Proof.
   intros args.
   rewrite (hlist_inv args).
   set (x := hlist_hd args) in *.
-  apply (exist _ (scast (adts pdf m srts a m_in a_in) x)).
+  apply (exist _ (scast (adts pdf m srts a m_in a_in srts_len) x)).
   unfold cast_arg_list. simpl.
   rewrite scast_eq_sym.
   f_equal.
@@ -164,9 +164,9 @@ Definition proj_args_eq (c: funsym) (f: funsym) (n: nat)
   { x: adt_rep m srts (dom_aux pd) a a_in |
     args = cast_arg_list (eq_sym (projection_syms_sigma_args srts (in_proj_syms Hn f_nth) 
       m_in a_in c_in srts_len)) 
-      (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in)) x) (HL_nil _))}.
+      (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in srts_len)) x) (HL_nil _))}.
 Proof.
-  apply get_hd_adt_rep, srts_len.
+  apply get_hd_adt_rep.
 Qed.
 
 (*One final typecast we need*)
@@ -303,7 +303,7 @@ Lemma selector_args_eq {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a 
   {x : adt_rep m srts (dom_aux pd) a a_in * 
     arg_list (domain (dom_aux pd)) (repeat s1 (length csl)) |
     args = cast_arg_list (eq_sym (selector_sigma_args csl m_in a_in srts_len)) 
-      (HL_cons _ _ _ (scast (eq_sym (adts pdf m srts a m_in a_in)) (fst x)) (snd x))
+      (HL_cons _ _ _ (scast (eq_sym (adts pdf m srts a m_in a_in srts_len)) (fst x)) (snd x))
   }.
 Proof.
   generalize dependent args.
@@ -311,7 +311,7 @@ Proof.
   simpl. intros args.
   rewrite (hlist_inv args).
   set (x := hlist_hd args) in *.
-  apply (exist _ ((scast (adts pdf m srts a m_in a_in) x), hlist_tl args)).
+  apply (exist _ ((scast (adts pdf m srts a m_in a_in srts_len) x), hlist_tl args)).
   unfold cast_arg_list. simpl.
   rewrite scast_eq_sym.
   reflexivity.
@@ -401,9 +401,9 @@ Definition indexer_args_eq
   (args: arg_list (domain (dom_aux pd)) (sym_sigma_args (indexer_funsym badnames (adt_name a)) srts)):
   { x: adt_rep m srts (dom_aux pd) a a_in |
     args = cast_arg_list (eq_sym (indexer_sigma_args m_in a_in srts_len)) 
-      (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in)) x) (HL_nil _))}.
+      (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in srts_len)) x) (HL_nil _))}.
 Proof.
-  apply get_hd_adt_rep, srts_len.
+  apply get_hd_adt_rep.
 Qed.
 
 (*Finally, ret is int*)

@@ -37,7 +37,8 @@ Record pi_dom_full (pd: pi_dom) := {
     the type is applied*)
 
     adts: forall (m: mut_adt) (srts: list sort)
-    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m),
+    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m)
+    (Hlen: length srts = length (m_params m)),
     (domain (dom_aux pd)) (s_cons (adt_name a) srts) =
     adt_rep m srts (dom_aux pd) a Hin;
 
@@ -610,7 +611,7 @@ Lemma change_gamma_adts {gamma1 gamma2}
   (pd: pi_dom)
   (pdf: pi_dom_full gamma1 pd):
   (forall m srts a (m_in: mut_in_ctx m gamma2)
-    (a_in: adt_in_mut a m),
+    (a_in: adt_in_mut a m) (srts_len: length srts = length (m_params m)),
     domain (dom_aux pd) (s_cons (adt_name a) srts) = adt_rep m srts (dom_aux pd) a a_in).
 Proof.
   intros m srts a m_in a_in.
