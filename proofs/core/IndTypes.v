@@ -888,6 +888,172 @@ End Theorems.
 
 End ADTConstr.
 
+(*Reasoning about equality of W-types, [mk_adts], etc*)
+Section Ext.
+
+(* Mutual recursion means we need additional typecasts and axioms
+  to deal with the dependent functions. We do that here. Since this is
+  only for testing, we don't introduce any axioms into the semantics*)
+
+  Section Cast.
+
+  (*Some results about casts require UIP*)
+  
+  (*We need UIP, so we assume it directly (rather than something like
+    excluded middle or proof irrelevance, which implies UIP)*)
+  
+  Lemma scast_left: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: Either A B = Either A' B') x,
+    scast H3 (Left A B x) = Left A' B' (scast H1 x).
+  Proof.
+    intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect.
+    assert (H3 = erefl) by apply UIP.
+    rewrite H. reflexivity.
+  Qed.
+  
+  Lemma scast_right: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: Either A B = Either A' B') x,
+  scast H3 (Right A B x) = Right A' B' (scast H2 x).
+  Proof.
+    intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect. simpl.
+    assert (H3 = erefl) by apply UIP.
+    rewrite H. reflexivity.
+  Qed.
+  
+  Lemma eq_idx {I: Set} {A1 A2 : I -> Set} (Heq: A1 = A2)
+    (i: I): A1 i = A2 i.
+  Proof.
+    rewrite Heq. reflexivity.
+  Defined.
+  
+  (*A version of [f_equal] for W types*)
+  Lemma w_eq: forall {I: Set} (A1 A2: I -> Set) (Heq: A1 = A2)
+    (B1: forall i: I, I -> A1 i -> Set)
+    (B2: forall i: I, I -> A2 i -> Set),
+    (forall i j a, B1 i j a = B2 i j (scast (eq_idx Heq i) a)) ->
+    W I A1 B1 = W I A2 B2.
+  Proof.
+    intros.
+    subst. f_equal. repeat(apply functional_extensionality_dep; intros).
+    rewrite H. reflexivity.
+  Qed.
+
+  Lemma eq_idx' {I: Set} {A: I -> Set} (B: forall i: I, I -> A i -> Set) {i j: I}
+    (a1 a2: A i) (Heq: a1 = a2) : B i j a1 = B i j a2.
+  Proof.
+    rewrite Heq. reflexivity.
+  Defined.
+
+  (*A version of [f_equal] for mkW*)
+  Lemma mkW_eq: forall {I: Set} (A: I -> Set) (B: forall i: I, I -> A i -> Set) (i: I)
+    (a1 a2: A i) (Heq: a1 = a2) (f1: forall j, B i j a1 -> W I A B j)
+    (f2: forall j, B i j a2 -> W I A B j),
+    (forall j b, f1 j b = f2 j (scast (eq_idx' B a1 a2 Heq) b)) ->
+    mkW I A B i a1 f1 = mkW I A B i a2 f2.
+  Proof.
+    intros. subst. f_equal. repeat (apply functional_extensionality_dep; intros).
+    rewrite H. reflexivity.
+  Qed. 
+  
+End Cast.
+
+(*Reasoning about equality of [mk_adts]*)
+
+(*We will have to reason about the (ts, tys) pairs that appear as (non-recursive)
+  arguments in ADT constructors. We define the relevant parts below:*)
+Definition vty_ts_pair (t: vty) : option (typesym * list vty) :=
+  match t with
+  | vty_cons ts vs => Some (ts, vs)
+  | _ => None
+  end.
+
+Definition funsym_ts_pairs m (f: funsym) : list (typesym * list vty) :=
+  CommonOption.omap vty_ts_pair (get_nonind_vtys m (s_args f)).
+
+Definition adt_ts_pairs m a : list (typesym * list vty) :=
+  concat (map (funsym_ts_pairs m) (adt_constr_list a)).
+
+Definition mut_ts_pairs m := concat (map (adt_ts_pairs m) m).
+
+(*This is the key lemma that lets us change the intepretation of an [adt_rep]:
+  if the two interpretations agree on all types in the constructors of [m].*)
+Lemma mk_adts_ext v a1 a2 m
+  (Ht: forall ts tys, In (ts, tys) (mut_ts_pairs m) -> a1 ts tys = a2 ts tys):
+  mk_adts v a1 m = mk_adts v a2 m.
+Proof.
+  unfold mk_adts.
+  assert (Hcbase: forall c a, In a m -> constr_in_adt c a -> 
+    build_constr_base v a1 m c = build_constr_base v a2 m c).
+  {
+    intros c a a_in c_in.
+    unfold build_constr_base, build_vty_base.
+    f_equal.
+    apply list_eq_ext'; rewrite !length_map; auto.
+    intros n d Hn.
+    rewrite -> !map_nth_inbound with (d2:=vty_int) by assumption.
+    unfold vty_to_set.
+    (*Here, we use the assumption*)
+    destruct (List.nth n (get_nonind_vtys m (s_args c)) vty_int) as [| | | ts vs] eqn : Hty; auto.
+    apply Ht. unfold mut_ts_pairs. rewrite in_concat. exists ((adt_ts_pairs m) a).
+    split; [rewrite in_map_iff; eauto|].
+    unfold adt_ts_pairs. rewrite in_concat. exists (funsym_ts_pairs m c).
+    rewrite in_map_iff. split; [exists c; split; auto; apply constr_in_adt_eq; auto|].
+    unfold funsym_ts_pairs. rewrite in_omap_iff. exists (vty_cons ts vs).
+    split; auto. rewrite <- Hty. apply nth_In. auto.
+  }
+  assert (Hbase': 
+    forall a l, In a m -> 
+    (forall x : funsym, in_bool_ne funsym_eq_dec x l -> constr_in_adt x a) ->
+    build_base v a1 m l = build_base v a2 m l).
+  {
+    intros a l a_in Hall.
+    induction l as [x | x l IH]; simpl in *.
+    - apply Hcbase with (a:=a); auto. apply Hall. destruct (funsym_eq_dec x x); auto.
+    - f_equal.
+      + apply Hcbase with (a:=a); auto. apply Hall. destruct (funsym_eq_dec x x); auto.
+      + apply IH. intros y Hiny. apply Hall. rewrite -> Hiny, orb_true_r. auto.
+  }
+  assert (Hbase: forall a : alg_datatype, In a m -> 
+    build_base v a1 m (adt_constrs a) = build_base v a2 m (adt_constrs a)).
+  {
+    intros a a_in.
+    apply Hbase' with (a:=a); auto.
+  }
+  assert (Heq: (fun n : finite (Datatypes.length m) => build_base v a1 m (adt_constrs (fin_nth m n))) =
+    (fun n : finite (Datatypes.length m) => build_base v a2 m (adt_constrs (fin_nth m n)))).
+  {
+    apply functional_extensionality. intros x.
+    pose proof (fin_nth_in _ x) as Hin.
+    apply Hbase; auto.
+  }
+  apply w_eq with (Heq:=Heq).
+  (*Now prove second part equiv*)
+  intros i j a.
+  pose proof (fin_nth_in m i) as Hina.
+  generalize dependent (eq_idx Heq i). clear Heq.
+  generalize dependent (fin_nth m i).
+  (*Again, need to generalize (adt_constrs a)*)
+  intros a b a_in Heq.
+  set (l := adt_constrs a) in *.
+  assert (Hall: forall (x: funsym), in_bool_ne funsym_eq_dec x l -> constr_in_adt x a).
+  { intros x. auto. }
+  induction l as [x | x l IH]; simpl in *; auto.
+  assert (Heq1: build_constr_base v a1 m x = build_constr_base v a2 m x).
+  { apply Hcbase with (a:=a); auto. apply Hall. destruct (funsym_eq_dec x x); auto. }
+  assert (Heq2: build_base v a1 m l = build_base v a2 m l).
+  { apply Hbase' with (a:=a); auto. intros y Hiny. apply Hall. rewrite -> Hiny, orb_true_r; auto. }
+  destruct b.
+  - (*Can't rewrite directly so we destruct and derive contradiction*)
+    destruct (scast Heq _) eqn : Hs; auto.
+    exfalso. rewrite -> scast_left with (H1:=Heq1) in Hs; [discriminate|]; auto.
+  - destruct (scast Heq _) eqn : Hs; auto.
+    { exfalso. rewrite -> scast_right with (H2:=Heq2) in Hs; [discriminate|]; auto. }
+    rewrite -> scast_right with (H2:=Heq2) in Hs; auto.
+    inversion Hs; subst.
+    apply IH.
+    intros y Hiny. apply Hall. rewrite -> Hiny, orb_true_r; auto.
+Qed.
+
+End Ext.
+
 Ltac destruct_list :=
   match goal with
   | |- context [ match ?l with | nil => ?x1 | a :: b => ?x2 end] =>
@@ -2122,70 +2288,6 @@ Proof.
 Qed.
 (*We need some axioms for testing: dependent functional extensionality,
   and for mutually recursive types, Uniqueness of Identity Proofs*)
-
-(* Mutual recursion means we need additional typecasts and axioms
-  to deal with the dependent functions. We do that here. Since this is
-  only for testing, we don't introduce any axioms into the semantics*)
-
-  Section Cast.
-
-  (*Some results about casts require UIP*)
-  
-  (*We need UIP, so we assume it directly (rather than something like
-    excluded middle or proof irrelevance, which implies UIP)*)
-  
-  Lemma scast_left: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: Either A B = Either A' B') x,
-    scast H3 (Left A B x) = Left A' B' (scast H1 x).
-  Proof.
-    intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect.
-    assert (H3 = erefl) by apply UIP.
-    rewrite H. reflexivity.
-  Qed.
-  
-  Lemma scast_right: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: Either A B = Either A' B') x,
-  scast H3 (Right A B x) = Right A' B' (scast H2 x).
-  Proof.
-    intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect. simpl.
-    assert (H3 = erefl) by apply UIP.
-    rewrite H. reflexivity.
-  Qed.
-  
-  Lemma eq_idx {I: Set} {A1 A2 : I -> Set} (Heq: A1 = A2)
-    (i: I): A1 i = A2 i.
-  Proof.
-    rewrite Heq. reflexivity.
-  Defined.
-  
-  (*A version of [f_equal] for W types*)
-  Lemma w_eq: forall {I: Set} (A1 A2: I -> Set) (Heq: A1 = A2)
-    (B1: forall i: I, I -> A1 i -> Set)
-    (B2: forall i: I, I -> A2 i -> Set),
-    (forall i j a, B1 i j a = B2 i j (scast (eq_idx Heq i) a)) ->
-    W I A1 B1 = W I A2 B2.
-  Proof.
-    intros.
-    subst. f_equal. repeat(apply functional_extensionality_dep; intros).
-    rewrite H. reflexivity.
-  Qed.
-
-  Lemma eq_idx' {I: Set} {A: I -> Set} (B: forall i: I, I -> A i -> Set) {i j: I}
-    (a1 a2: A i) (Heq: a1 = a2) : B i j a1 = B i j a2.
-  Proof.
-    rewrite Heq. reflexivity.
-  Defined.
-
-  (*A version of [f_equal] for mkW*)
-  Lemma mkW_eq: forall {I: Set} (A: I -> Set) (B: forall i: I, I -> A i -> Set) (i: I)
-    (a1 a2: A i) (Heq: a1 = a2) (f1: forall j, B i j a1 -> W I A B j)
-    (f2: forall j, B i j a2 -> W I A B j),
-    (forall j b, f1 j b = f2 j (scast (eq_idx' B a1 a2 Heq) b)) ->
-    mkW I A B i a1 f1 = mkW I A B i a2 f2.
-  Proof.
-    intros. subst. f_equal. repeat (apply functional_extensionality_dep; intros).
-    rewrite H. reflexivity.
-  Qed. 
-  
-End Cast.
 
 (* We give many unit tests of increasing complexity to validate the encoding
   and ensure that the encodings can be proved equivalent to simpler, expected forms.*)
