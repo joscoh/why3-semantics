@@ -200,16 +200,8 @@ Definition list_to_aset (l: list A) : aset := list_to_set l.
 
 (*Stdpp uses different In*)
 Lemma in_equiv {C: Type} (x: C) (l: list C):
-  elem_of_list x l ↔ In x l.
-Proof.
-  induction l as [| h t IH]; simpl.
-  - split; try contradiction. intros Hin; inversion Hin.
-  - split.
-    + intros Helem. inversion Helem; subst; auto.
-      right; auto. apply IH; auto.
-    + intros [Hx | Hinx]; subst; [constructor; auto|].
-      constructor. apply IH; auto.
-Qed.
+  x ∈ l ↔ In x l.
+Proof. apply list_elem_of_In. Qed.
 
 Lemma aset_mem_list_to_aset x l:
   aset_mem x (list_to_aset l) <-> In x l.
@@ -320,7 +312,7 @@ Lemma aset_fresh_list_notin `{Infinite A} (n: nat) (s: aset) : forall x, List.In
   ~ aset_mem x s.
 Proof.
   intros x.
-  rewrite <- elem_of_list_In. intros Hin. apply fresh_list_is_fresh in Hin.
+  rewrite <- list_elem_of_In. intros Hin. apply fresh_list_is_fresh in Hin.
   auto.
 Qed.
 
@@ -461,10 +453,10 @@ Proof.
   - simpl.
     destruct (in_dec EqDecision0 h t).
     + rewrite subseteq_union_1; [lia|].
-      set_unfold. intros x Hx; subst; auto. apply elem_of_list_In; auto.
+      set_unfold. intros x Hx; subst; auto. apply list_elem_of_In; auto.
     + rewrite size_union.
       * rewrite size_singleton. lia.
-      * set_unfold. intros x Hx; subst. rewrite elem_of_list_In. auto.
+      * set_unfold. intros x Hx; subst. rewrite list_elem_of_In. auto.
 Qed. 
 
 (*Need stronger*)
@@ -543,7 +535,7 @@ Proof.
   symmetry. apply elements_list_to_set.
   apply NoDup_ListNoDup. apply NoDup_map_inj.
   - unfold aset_mem in Hinj.
-    intros x y Hinx Hiny. apply Hinj; rewrite <- elem_of_elements; apply elem_of_list_In; auto.
+    intros x y Hinx Hiny. apply Hinj; rewrite <- elem_of_elements; apply list_elem_of_In; auto.
   - apply NoDup_ListNoDup, NoDup_elements.
 Qed. 
 

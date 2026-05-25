@@ -1,4 +1,4 @@
-Require Export Logic.
+Require Export Proofs.core.Logic.
 Set Bullet Behavior "Strict Subproofs".
 
 

@@ -70,7 +70,7 @@ Proof.
   split.
   - apply _.
   - unfold elements, elem_of at 2, mapset_elements, mapset_elem_of.
-    intros [m] x. simpl. rewrite elem_of_list_fmap. split.
+    intros [m] x. simpl. rewrite list_elem_of_fmap. split.
     + intros ([y []] &?& Hy). subst. by rewrite <-elem_of_map_to_list.
     + intros. exists (x, ()). by rewrite elem_of_map_to_list.
   - unfold elements, mapset_elements. intros [m]. simpl.

@@ -1,4 +1,4 @@
-Require Export Logic.
+Require Export Proofs.core.Logic.
 (*utilities to prevent us from having to write the type
   variables in a function/predicate symbol*)
 
