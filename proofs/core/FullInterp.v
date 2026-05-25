@@ -3,6 +3,7 @@
 Require Export RecFun2.
 Require Export NonRecFun.
 Require Export IndProp.
+Require Export ADTInterp.
 
 Set Bullet Behavior "Strict Subproofs".
 
@@ -1154,18 +1155,18 @@ Qed.
   it satisfies all of the conditions of [full_interp]*)
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
-(pd: pi_dom) (pdf: pi_dom_full gamma pd).
+(pd: pi_dom).
 
 Definition full_pf funs preds : 
-  pi_funpred gamma_valid pd pdf :=
-  upd_pf_multi gamma_valid pd pdf gamma
+  pi_funpred gamma_valid (mk_pi_dom gamma_valid pd) (mk_pi_dom_full gamma_valid pd) :=
+  upd_pf_multi gamma_valid (mk_pi_dom gamma_valid pd) (mk_pi_dom_full gamma_valid pd) gamma
     (*start with the ADT constructors, add all defs in gamma*)
-    (mk_pi_funpred gamma_valid pd pdf funs preds)
+    (mk_pi_funpred gamma_valid (mk_pi_dom gamma_valid pd) (mk_pi_dom_full gamma_valid pd) funs preds)
     (all_in_refl gamma).
 
 (*And the spec: first, it is a full_interp*)
 Theorem full_pf_interp funs preds :
-  full_interp gamma_valid pd (full_pf funs preds).
+  full_interp gamma_valid (mk_pi_dom gamma_valid pd) (full_pf funs preds).
 Proof.
   assert (Hnodup: NoDup gamma). apply valid_context_Nodup; auto. 
   assert (Hord: ctx_ordered gamma). apply valid_context_ordered; auto. 
@@ -1175,13 +1176,13 @@ Proof.
     assert (Hin':=f_in).
     unfold fun_defined in Hin'.
     destruct Hin' as [ [fs [fs_in f_in']]|f_in'].
-    + rewrite (upd_pf_multi_recfun gamma_valid pd pdf gamma
-      (mk_pi_funpred gamma_valid pd pdf funs preds) (all_in_refl gamma) Hnodup
+    + rewrite (upd_pf_multi_recfun gamma_valid _ (mk_pi_dom_full gamma_valid pd) gamma
+      (mk_pi_funpred gamma_valid _ (mk_pi_dom_full gamma_valid pd) funs preds) (all_in_refl gamma) Hnodup
       Hord fs (proj1 (in_mutfuns gamma fs) fs_in) f args
       body f_in' srts srts_len a vt vv).
       apply dom_cast_eq'.
       apply term_rep_irrel.
-    + rewrite (upd_pf_multi_nonrecfun gamma_valid pd pdf gamma _ (all_in_refl gamma) Hnodup
+    + rewrite (upd_pf_multi_nonrecfun gamma_valid _ (mk_pi_dom_full gamma_valid pd) gamma _ (all_in_refl gamma) Hnodup
       Hord f args body f_in' _ srts_len a vt vv).
       apply dom_cast_eq'.
       apply term_rep_irrel.
@@ -1190,11 +1191,11 @@ Proof.
     assert (Hin':=p_in).
     unfold pred_defined in Hin'.
     destruct Hin' as [ [fs [fs_in p_in']]|p_in'].
-    + rewrite (upd_pf_multi_recpred gamma_valid pd pdf gamma _ (all_in_refl gamma) Hnodup
+    + rewrite (upd_pf_multi_recpred gamma_valid _ (mk_pi_dom_full gamma_valid pd) gamma _ (all_in_refl gamma) Hnodup
       Hord fs (proj1 (in_mutfuns gamma fs) fs_in) p args
       body p_in' srts srts_len a vt vv).
       apply fmla_rep_irrel.
-    + rewrite (upd_pf_multi_nonrecpred gamma_valid pd pdf gamma _ (all_in_refl gamma) Hnodup
+    + rewrite (upd_pf_multi_nonrecpred gamma_valid _ (mk_pi_dom_full gamma_valid pd) gamma _ (all_in_refl gamma) Hnodup
       Hord p args body p_in' _ srts_len a vt vv).
       apply fmla_rep_irrel.
   - intros. unfold full_pf. 
@@ -1242,12 +1243,12 @@ Qed.
   and predicates, there exists a full_interp consistent with this
   *)
 Theorem full_interp_exists: forall funi predi,
-  {pf: pi_funpred gamma_valid pd pdf | 
-    full_interp gamma_valid pd pf /\ 
+  {pf: pi_funpred gamma_valid (mk_pi_dom gamma_valid pd) (mk_pi_dom_full gamma_valid pd) | 
+    full_interp gamma_valid (mk_pi_dom gamma_valid pd) pf /\ 
     (forall f srts a, In (abs_fun f) gamma ->
-      (funs gamma_valid pd pf ) f srts a = funi f srts a) /\
+      (funs gamma_valid _ pf ) f srts a = funi f srts a) /\
     (forall p srts a, In (abs_pred p) gamma ->
-      (preds gamma_valid pd pf) p srts a = predi p srts a)}.
+      (preds gamma_valid _ pf) p srts a = predi p srts a)}.
 Proof.
   intros.
   apply (exist _ ((full_pf funi predi))).
