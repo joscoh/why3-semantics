@@ -2,7 +2,7 @@ Require Export Typing.
 Require Import CommonSSR.
 
 From HB Require Import structures.
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 Set Bullet Behavior "Strict Subproofs".
 
 (*Canonical Structure instances we need*)

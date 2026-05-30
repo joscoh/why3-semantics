@@ -15,7 +15,7 @@
     unfolding yet, though we could easily)
   *)
 From Proofs.proofsystem Require Import Tactics.
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 Set Bullet Behavior "Strict Subproofs".
 
 Module SimplMatchTest.

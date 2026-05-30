@@ -7,13 +7,13 @@ Require Export Task.
 Require Export Util.
 Require Export Typechecker.
 Require Export Rewrite.
-From mathcomp Require all_ssreflect.
+From mathcomp Require all_boot.
 Set Bullet Behavior "Strict Subproofs".
 
 (*See if a term has a type (without ssreflect, for external use)*)
 Module CheckTy.
 
-Import all_ssreflect.
+Import all_boot.
 
 Definition check_tm_ty (gamma: context) (t: term) (v: vty) : bool :=
   typecheck_term gamma t == Some v.

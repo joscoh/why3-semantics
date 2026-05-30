@@ -5,7 +5,7 @@ Require Export NatDed.
 Require Export Theory.
 Require Export Unfold.
 Require Import CommonSSR.
-From mathcomp Require Export all_ssreflect.
+From mathcomp Require Export all_boot.
 Set Bullet Behavior "Strict Subproofs".
 
 
@@ -1039,7 +1039,7 @@ Proof.
 Qed.
 
 (*And then we give a tactic for this*)
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 Require Import Typechecker. 
 Definition check_valid_tys gamma (l: list vty) : bool :=
   all (typecheck_type gamma) l.

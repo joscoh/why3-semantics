@@ -1,4 +1,4 @@
-(lang dune 3.19)
-(using coq 0.8)
+(lang dune 3.21)
+(using rocq 0.11)
 
 (name Why3Coq)

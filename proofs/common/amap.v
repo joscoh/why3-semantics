@@ -310,7 +310,7 @@ Proof.
       intro C; subst. apply Hnotin. exists (x2, y2); split; auto.
       apply elem_of_map_to_list; auto.
     + exists (x, y). split; auto. apply elem_of_map_to_list.
-      rewrite lookup_insert. reflexivity.
+      rewrite lookup_insert_eq. reflexivity.
 Qed.
 
 (*Need extensionality*)
@@ -476,7 +476,7 @@ Lemma in_elements_iff x y (m: amap):
 Proof.
   simpl_amap.
   unfold elements, amap_lookup.
-  rewrite <- elem_of_list_In. apply elem_of_map_to_list.
+  rewrite <- list_elem_of_In. apply elem_of_map_to_list.
 Qed.
 
 Definition keylist (m: amap) : list A := map fst (elements m).

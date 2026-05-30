@@ -2,7 +2,7 @@
   addition is commutative*)
 
 From Proofs.proofsystem Require Import Tactics Compat.
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 Set Bullet Behavior "Strict Subproofs".
 
 Module InductionTest.

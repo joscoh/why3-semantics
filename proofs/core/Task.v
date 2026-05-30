@@ -1,4 +1,4 @@
-Require Export Logic.
+Require Export Proofs.core.Logic.
 Set Bullet Behavior "Strict Subproofs".
 
 
@@ -1090,7 +1090,7 @@ Qed.
 End TaskMap.
 
 (*Prove task_wf automatically*)
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 Set Bullet Behavior "Strict Subproofs".
 Require Import Typechecker CommonSSR.
 

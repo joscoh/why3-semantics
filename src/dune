@@ -1,5 +1,5 @@
 (include_subdirs qualified)
-(coq.theory
+(rocq.theory
  (name Src)
  (theories Proofs stdpp ExtLib Stdlib)
  (flags :standard -w 
