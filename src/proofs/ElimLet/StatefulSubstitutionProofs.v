@@ -1480,11 +1480,11 @@ Proof.
         assert (Hlen3: forall s, length (tm_bnd e3) = length (new_var_names t2 s)).
         { intros s. rewrite new_var_names_length; auto. symmetry; apply term_bnd_tm; auto. }
         rewrite Hy. f_equal. f_equal.
-        - f_equal. erewrite Hlen2. rewrite list_basics.take_app_length; auto. f_equal. lia.
-        - f_equal. erewrite Hlen2. rewrite list_basics.drop_app_length; auto.
-          erewrite Hlen3. rewrite list_basics.take_app_length; auto. f_equal. lia.
-        - f_equal. erewrite Hlen2. rewrite list_basics.drop_app_length; auto.
-          erewrite Hlen3. rewrite list_basics.drop_app_length; auto. f_equal. lia.
+        - f_equal. erewrite Hlen2. rewrite list_basics.list.take_app_length; auto. f_equal. lia.
+        - f_equal. erewrite Hlen2. rewrite list_basics.list.drop_app_length; auto.
+          erewrite Hlen3. rewrite list_basics.list.take_app_length; auto. f_equal. lia.
+        - f_equal. erewrite Hlen2. rewrite list_basics.list.drop_app_length; auto.
+          erewrite Hlen3. rewrite list_basics.list.drop_app_length; auto. f_equal. lia.
       }
       (*First part from IH and previous results*)
       1: {
@@ -1582,11 +1582,11 @@ Proof.
         assert (Hlen3: forall s, length (fmla_bnd e3) = length (new_var_names t2 s)).
         { intros s. rewrite new_var_names_length; auto. symmetry; apply term_bnd_fmla; auto. }
         rewrite Hy. f_equal. f_equal.
-        - f_equal. erewrite Hlen2. rewrite list_basics.take_app_length; auto. f_equal. lia.
-        - f_equal. erewrite Hlen2. rewrite list_basics.drop_app_length; auto.
-          erewrite Hlen3. rewrite list_basics.take_app_length; auto. f_equal. lia.
-        - f_equal. erewrite Hlen2. rewrite list_basics.drop_app_length; auto.
-          erewrite Hlen3. rewrite list_basics.drop_app_length; auto. f_equal. lia.
+        - f_equal. erewrite Hlen2. rewrite list_basics.list.take_app_length; auto. f_equal. lia.
+        - f_equal. erewrite Hlen2. rewrite list_basics.list.drop_app_length; auto.
+          erewrite Hlen3. rewrite list_basics.list.take_app_length; auto. f_equal. lia.
+        - f_equal. erewrite Hlen2. rewrite list_basics.list.drop_app_length; auto.
+          erewrite Hlen3. rewrite list_basics.list.drop_app_length; auto. f_equal. lia.
       }
       (*First part from IH and previous results*)
       1: {
@@ -1693,10 +1693,10 @@ Proof.
         assert (Hlen2: forall s, length (tm_bnd e2) = length (new_var_names t1 s)).
         { intros s. rewrite new_var_names_length; auto. symmetry; apply term_bnd_tm; auto. }
         f_equal. f_equal.
-        - f_equal. erewrite Hlen2. rewrite list_basics.take_app_length; auto. f_equal. lia.
+        - f_equal. erewrite Hlen2. rewrite list_basics.list.take_app_length; auto. f_equal. lia.
         - f_equal. f_equal. f_equal. lia.
         - f_equal; [repeat (f_equal; try lia)|]. f_equal.
-          erewrite Hlen2. rewrite list_basics.drop_app_length; auto. f_equal. lia.
+          erewrite Hlen2. rewrite list_basics.list.drop_app_length; auto. f_equal. lia.
       }
       1: {
         apply errst_spec_weaken_pre with (P1:=fun s => term_st_wf t1 s /\ (term_st_wf t2 s /\ vsym_st_wf v1 s)).
@@ -1845,10 +1845,10 @@ Proof.
         assert (Hlen2: forall s, length (tm_bnd e2) = length (new_var_names t1 s)).
         { intros s. rewrite new_var_names_length; auto. symmetry; apply term_bnd_tm; auto. }
         f_equal. f_equal.
-        - f_equal. erewrite Hlen2. rewrite list_basics.take_app_length; auto. f_equal. lia.
+        - f_equal. erewrite Hlen2. rewrite list_basics.list.take_app_length; auto. f_equal. lia.
         - f_equal. f_equal. f_equal. lia.
         - f_equal; [repeat (f_equal; try lia)|]. f_equal. 
-          erewrite Hlen2. rewrite list_basics.drop_app_length; auto. f_equal. lia.
+          erewrite Hlen2. rewrite list_basics.list.drop_app_length; auto. f_equal. lia.
       }
       1: {
         apply errst_spec_weaken_pre with (P1:=fun s => term_st_wf t1 s /\ (term_st_wf t2 s /\ vsym_st_wf v1 s)).
@@ -2004,8 +2004,8 @@ Proof.
       assert (Hlen2: forall s, length (fmla_bnd e2) = length (new_var_names t1 s)).
       { intros s. rewrite new_var_names_length; auto. symmetry; apply term_bnd_fmla; auto. }
       rewrite Hy. f_equal. f_equal.
-      - f_equal. erewrite Hlen2. rewrite list_basics.take_app_length; auto. f_equal. lia.
-      - f_equal. erewrite Hlen2. rewrite list_basics.drop_app_length; auto. f_equal. lia.
+      - f_equal. erewrite Hlen2. rewrite list_basics.list.take_app_length; auto. f_equal. lia.
+      - f_equal. erewrite Hlen2. rewrite list_basics.list.drop_app_length; auto. f_equal. lia.
     }
     (*First part from IH and previous results*)
     1: {

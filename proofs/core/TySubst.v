@@ -24,7 +24,7 @@ Require Import CommonSSR Typechecker.
     But it is a lot of work to show that all of this works.
     We do so here.*)
 
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 Set Bullet Behavior "Strict Subproofs".
 
 (*To prove that patterns are well-typed,

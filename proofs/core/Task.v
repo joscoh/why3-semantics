@@ -1090,7 +1090,7 @@ Qed.
 End TaskMap.
 
 (*Prove task_wf automatically*)
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 Set Bullet Behavior "Strict Subproofs".
 Require Import Typechecker CommonSSR.
 

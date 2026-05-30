@@ -213,7 +213,7 @@ Require Import Syntax.
 Require Import Stdlib.Strings.String.
 From Stdlib Require Import FunInd.
 From Stdlib Require Import Recdef.
-From mathcomp Require Import all_ssreflect ssrnat div.
+From mathcomp Require Import all_boot ssrnat div.
 
 Set Bullet Behavior "Strict Subproofs".
 

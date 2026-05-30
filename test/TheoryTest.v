@@ -2,7 +2,7 @@
   that (especially) the cloning/qualifying works*)
 From Proofs.core Require Import Task Theory Typechecker.
 From Proofs.proofsystem Require Import Tactics.
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 Set Bullet Behavior "Strict Subproofs".
 
 (*Why3 has constants, which so far as I can tell are just

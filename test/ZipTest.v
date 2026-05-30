@@ -1,7 +1,7 @@
 (*Here we define the function "zip", which is a test that our constructor
   termination check (which allows multiple pattern matches) works*)
 From Proofs.proofsystem Require Import Tactics.
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 Set Bullet Behavior "Strict Subproofs".
 
 Module ZipTest.
