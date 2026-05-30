@@ -618,13 +618,13 @@ Section curry_uncurry.
     { by rewrite !lookup_empty. }
     clear m; intros i' m2 m m12 Hi' IH.
     apply (map_fold_weak_ind (λ m2r m2, m2r !! (i,j) = <[i':=m2]> m !! i ≫= (.!! j))).
-    { rewrite IH. destruct (decide (i' = i)) as [->|].
-      - rewrite lookup_insert, Hi'; simpl; by rewrite lookup_empty.
-      - by rewrite lookup_insert_ne by done. }
+    { rewrite IH. rewrite lookup_insert.
+      destruct (decide (i' = i)) as [->|]; [|done].
+      rewrite Hi'; simpl; by rewrite lookup_empty. }
     intros j' y m2' m12' Hj' IH'. destruct (decide (i = i')) as [->|].
-    - rewrite lookup_insert; simpl. destruct (decide (j = j')) as [->|].
-      + by rewrite !lookup_insert.
-      + by rewrite !lookup_insert_ne, IH', lookup_insert by congruence.
+    - rewrite lookup_insert_eq; simpl. destruct (decide (j = j')) as [->|].
+      + by rewrite !lookup_insert_eq.
+      + by rewrite !lookup_insert_ne, IH', lookup_insert_eq by congruence.
     - by rewrite !lookup_insert_ne, IH', lookup_insert_ne by congruence.
   Qed.
 
@@ -635,9 +635,10 @@ Section curry_uncurry.
     { by rewrite !lookup_empty. }
     clear m; intros [i' j'] x m12 mr Hij' IH.
     destruct (decide (i = i')) as [->|].
-    - rewrite lookup_partial_alter. destruct (decide (j = j')) as [->|].
-      + destruct (mr !! i'); simpl; by rewrite !lookup_insert.
-      + destruct (mr !! i'); simpl; by rewrite !lookup_insert_ne by congruence.
+    - rewrite lookup_partial_alter_eq. destruct (decide (j = j')) as [->|].
+      + destruct (mr !! i'); simpl; by rewrite !lookup_insert_eq.
+      + destruct (mr !! i'); simpl; rewrite !lookup_insert_ne by congruence; first done.
+        by rewrite <-IH, lookup_empty.
     - by rewrite lookup_partial_alter_ne, lookup_insert_ne by congruence.
   Qed.
 
@@ -648,8 +649,8 @@ Section curry_uncurry.
       (λ mr m, mr !! i = None ↔ (∀ j, m !! (i, j) = None))); [done|].
     clear m; intros [i' j'] x m12 mr Hij' IH.
     destruct (decide (i = i')) as [->|].
-    - split; [by rewrite lookup_partial_alter|].
-      intros Hi. specialize (Hi j'). by rewrite lookup_insert in Hi.
+    - split; [by rewrite lookup_partial_alter_eq|].
+      intros Hi. specialize (Hi j'). by rewrite lookup_insert_eq in Hi.
     - rewrite lookup_partial_alter_ne, IH; [|done]. apply forall_proper.
       intros j. rewrite lookup_insert_ne; [done|congruence].
   Qed.

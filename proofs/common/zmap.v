@@ -56,7 +56,8 @@ Proof.
     + apply map_eq. intros i. apply (H (Z.pos i)).
     + apply map_eq. intros i. apply (H (Z.neg i)).
   - by intros ? [].
-  - intros ? f [] [|?|?]; simpl; [done| |]; apply lookup_partial_alter.
+  - intros ? f [] [|?|?]; simpl; [done| |];
+      rewrite lookup_partial_alter, decide_True by reflexivity; reflexivity.
   - intros ? f [] [|?|?] [|?|?]; simpl; intuition congruence ||
       intros; apply lookup_partial_alter_ne; congruence.
   - intros ??? [??] []; simpl; [done| |]; apply lookup_fmap.

@@ -28,24 +28,27 @@ Each subdirectory contains a README with more information about the file organiz
 
 ### Building the Proofs
 
-The proofs build under `Coq 8.20.1` and require the following packages: 
-- `Equations 1.3.1+8.20`
-- `Mathematical Components 2.3.0`
-- `std++ 1.11.0`
-- `coq-ext-lib 0.13.0`
-All are available as part of the Coq Platform
+The proofs build under `Rocq 9.1.1` and require the following packages: 
+- `Equations 1.3.1+9.1`
+- `Mathematical Components 2.5.0`
+- `std++ 1.13.0`
+- `coq-ext-lib 0.13.1`
+All are available as part of the Coq Platform.
+Older versions of the repo build under previous versions of Coq/Rocq (e.g. see branches `coq-8.20`, `rocq-9.0`).
 
 The extracted OCaml code runs under `OCaml 4.14.2` with the following dependencies:
-- `dune 3.16.1`
+- `dune 3.22.2`
 - `Zarith 1.14`
 - `sexplib v0.16.0`
-- `re 1.12.0`
+- `re 1.14.0`
 
 Note: it is possible this works with other versions of the packages above, but this has not been tested.
 
 To build the proofs, extract to OCaml, and compile the resulting OCaml code, run `dune build` or `make` for verbose output.
 
 ### Testing
+
+NOTE: this has not been maintained past the `coq-8.20` branch and may eventually be removed from the repo.
 
 The above steps check compilation of the extracted code as a sanity test. However, the OCaml code can also be integrated into a fork of Why3 (https://github.com/joscoh/why3) for real use.
 The script `./update_ocaml.sh` checks for changed files (of those listed in `to_copy.txt`) and updates those in the Why3 fork (also a submodule of this repo). It can be run with the flag `--comp` to see changes without replacing anything.

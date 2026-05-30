@@ -1,4 +1,4 @@
-(coq.theory
+(rocq.theory
 (name Test)
 (theories Proofs)
 (flags :standard -w 

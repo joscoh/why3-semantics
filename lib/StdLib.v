@@ -1,6 +1,6 @@
 From Proofs.core Require Export Task Theory Typechecker.
 From Proofs.proofsystem Require Export Tactics Notations.
-From mathcomp Require Export all_ssreflect.
+From mathcomp Require Export all_boot.
 
 (*Different than other version because we use [funsym_noty]
   instead of writing manually*)

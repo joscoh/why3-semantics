@@ -6,7 +6,7 @@ From Stdlib Require Export Lia.
 
 Require Export Common.
 From HB Require Import structures.
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 Set Bullet Behavior "Strict Subproofs".
 Require countable strings.
 

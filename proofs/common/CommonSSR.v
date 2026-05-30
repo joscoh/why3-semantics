@@ -2,7 +2,7 @@
   (at the moment, mainly only the termination checker)*)
 Require Import Common.
 From HB Require Import structures.
-From mathcomp Require Export all_ssreflect.
+From mathcomp Require Export all_boot.
 Set Bullet Behavior "Strict Subproofs".
 
 Ltac reflT := apply ReflectT; constructor.

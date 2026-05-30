@@ -715,7 +715,7 @@ check_typed_theory_p (tclone th _ _ _ _ :: tl) :=
   check_typed_theory_p tl;
 check_typed_theory_p (tdef _ :: tl) := check_typed_theory_p tl.
 
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 
 Lemma check_typed_theory_p_spec t:
   reflect (typed_theory_p t) (check_typed_theory_p t) .

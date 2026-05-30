@@ -13,12 +13,12 @@ Require Import Stdlib.Logic.EqdepFacts.
 
 (*Dealing with finite types*)
 From HB Require structures.
-From mathcomp Require all_ssreflect fintype finfun.
+From mathcomp Require all_boot fintype finfun.
 Set Bullet Behavior "Strict Subproofs".
 
 Section SSReflect.
 
-Import all_ssreflect fintype finfun structures.
+Import all_boot fintype finfun structures.
 
 Section Finite.
 

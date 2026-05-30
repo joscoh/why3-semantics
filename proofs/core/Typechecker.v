@@ -4,7 +4,7 @@ Require Import CommonSSR.
 Require Import TerminationChecker.
 
 From HB Require Import structures.
-From mathcomp Require Import all_ssreflect.
+From mathcomp Require Import all_boot.
 Set Bullet Behavior "Strict Subproofs".
 
 (* General ssreflect helpful lemmas *)
