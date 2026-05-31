@@ -1,0 +1,52 @@
+name: Rocq CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Cache Opam dependencies
+      uses: actions/cache@v4
+      id: cache-opam
+      with:
+        path: ~/.opam
+        key: ${{ runner.os }}-rocq-9.1.1-ocaml-4.14.2-${{ hashFiles('.github/workflows/rocq-ci.yml') }}
+
+    - name: Run Rocq compilation
+      uses: rocq-prover/docker-opam-action@v1
+      with:
+        custom_image: 'rocq/rocq-prover:9.1.1-ocaml-4.14.2-flambda'
+        script: |
+          # 1. Skip package downloads if a cache hit occurs
+          if [ "${{ steps.cache-opam.outputs.cache-hit }}" != "true" ]; then
+            opam repository set-url rocq-released https://rocq-prover.org/opam/released
+            opam update
+
+            opam pin remove dune -y
+
+            opam install -y dune.3.22.2            
+            opam install -y rocq-core.9.1.1
+            
+            opam install -y \
+              rocq-equations \
+              rocq-mathcomp-ssreflect \
+              rocq-stdpp \
+              coq-ext-lib \
+              zarith \
+              sexplib \
+              re
+          else
+            echo "Cache hit! Skipping opam installation steps."
+          fi
+          
+          # 2. Compile the local project
+          sudo chown -R 1000:1000 .
+          dune build
