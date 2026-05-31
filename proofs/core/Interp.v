@@ -1,4 +1,5 @@
-Require Export amap IndTypes.
+Require Export amap ADTSpec IndTypes.
+Require Export Stdlib.Logic.FunctionalExtensionality.
 Set Bullet Behavior "Strict Subproofs".
 
 (* Definition of Pre-Interpretation and utilities
@@ -29,6 +30,11 @@ Record pi_dom : Type :=
   domain_ne: forall s, domain_nonempty (domain dom_aux) s;
   }.
 
+(*Collecting this assumption is useful for constructing satisfying interps
+ (see ADTFullProps.v for the proof that [pi_dom_full] satisfies
+ the ADT spec in [pi_funpred] below and ADTInterp.v for the explicit
+ construction of such an interp.*)
+
 Record pi_dom_full (pd: pi_dom) := {
   
 
@@ -40,13 +46,13 @@ Record pi_dom_full (pd: pi_dom) := {
     (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m)
     (Hlen: length srts = length (m_params m)),
     (domain (dom_aux pd)) (s_cons (adt_name a) srts) =
-    adt_rep m srts (dom_aux pd) a Hin;
+    IndTypes.adt_rep m srts (dom_aux pd) a Hin;
 
 }.
 End PD.
-Arguments adts {_} {_}.
+(*Arguments adts {_} {_}.*)
 Context {gamma: context} (gamma_valid: valid_context gamma).
-Record pi_funpred (pd: pi_dom) (pdf: pi_dom_full gamma pd) := {
+Record pi_funpred (pd: pi_dom) := {
   (*Functions and predicates take in a heterogenous list such that
     the ith argument has the correct type.*)
 
@@ -57,15 +63,18 @@ Record pi_funpred (pd: pi_dom) (pdf: pi_dom_full gamma pd) := {
   preds: forall (p:predsym) (srts: list sort),
     arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool;
 
+  (*The interpretation must satisfy the ADT properties*)
+  adt_props: adt_interp_props gamma_valid (dom_aux pd) funs
+
   (*The interpretation for each constructor comes from [constr_rep]
     with an additional cast for the domains*)
-  constrs: forall (m: mut_adt) (a: alg_datatype) (c: funsym)
+  (*constrs: forall (m: mut_adt) (a: alg_datatype) (c: funsym)
     (Hm: mut_in_ctx m gamma) (Ha: adt_in_mut a m) (Hc: constr_in_adt c a)
     (srts: list sort) (Hlens: length srts = length (m_params m))
     (args: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)),
     funs c srts args =
     constr_rep_dom gamma_valid m Hm srts Hlens (dom_aux pd) a Ha
-      c Hc (adts pdf m srts) args
+      c Hc (adts pdf m srts) args*)
 
 }.
 
@@ -85,7 +94,7 @@ Definition val_vars (pd: pi_dom) (vt: val_typevar) : Type :=
 Section ValUtil.
 
 Variable pd: pi_dom.
-Variable pdf : pi_dom_full gamma pd.
+(* Variable pdf : pi_dom_full gamma pd. *)
 Variable vt: val_typevar.
 
 Notation domain := (domain (dom_aux pd)).
@@ -601,15 +610,15 @@ End VTUtil.
 
 End Interp.
 
-Arguments adts {_} {_}.
-Arguments funs {_} _ _ {_}.
-Arguments preds {_} _ _ {_}.
+(*Arguments adts {_} {_}.*)
+(* Arguments funs {_} _ _ {_}. *)
+(* Arguments preds {_} _ _ {_}. *)
 
 (*Change interp if gamma changes (but muts are the same)*)
-Lemma change_gamma_adts {gamma1 gamma2} 
+(*Lemma change_gamma_adts {gamma1 gamma2} 
   (Hm: mut_of_context gamma1 = mut_of_context gamma2)
   (pd: pi_dom)
-  (pdf: pi_dom_full gamma1 pd):
+  (*(pdf: pi_dom_full gamma1 pd)*):
   (forall m srts a (m_in: mut_in_ctx m gamma2)
     (a_in: adt_in_mut a m) (srts_len: length srts = length (m_params m)),
     domain (dom_aux pd) (s_cons (adt_name a) srts) = adt_rep m srts (dom_aux pd) a a_in).
@@ -617,12 +626,12 @@ Proof.
   intros m srts a m_in a_in.
   apply pdf. unfold mut_in_ctx.
   exact (eq_trans (f_equal (fun p => in_bool mut_adt_dec m p) Hm) m_in).
-Defined.
+Defined.*)
 
 (*TODO: should we put [dom_nonempty] in pd so that we don't need lemma?*)
-Definition change_gamma_dom_full {gamma1 gamma2} 
+(*Definition change_gamma_dom_full {gamma1 gamma2} 
   (Hm: mut_of_context gamma1 = mut_of_context gamma2)
   (pd: pi_dom)
-  (pdf: pi_dom_full gamma1 pd):
+  (*(pdf: pi_dom_full gamma1 pd)*):
   pi_dom_full gamma2 pd :=
-  Build_pi_dom_full gamma2 pd (change_gamma_adts Hm pd pdf).
+  Build_pi_dom_full gamma2 pd (change_gamma_adts Hm pd pdf).*)
