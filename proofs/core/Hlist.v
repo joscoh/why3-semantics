@@ -348,4 +348,40 @@ Lemma hlist_tl_app1 {A: Type} {f: A -> Type} hd l1 l2 h1 h2:
   (hlist_app f l1 l2 (hlist_tl h1) h2).
 Proof.
   rewrite (hlist_inv h1). simp hlist_app. reflexivity.
+Qed.
+
+(*[map*)
+Equations hlist_map {A: Type} (f1 f2: A -> Type) (g: forall a, f1 a -> f2 a) (l: list A) (h1: hlist f1 l) : hlist f2 l :=
+  hlist_map f1 f2 g nil (HL_nil _) := HL_nil _;
+  hlist_map f1 f2 g (x :: l1) (HL_cons _ a1 htl) := HL_cons _ _ _ (g x a1) (hlist_map f1 f2 g l1 htl).
+
+Lemma hlist_map_map {A: Type} (f1 f2 f3: A -> Type) (g1: forall a, f1 a -> f2 a) (g2: forall a, f2 a -> f3 a)
+  (l: list A) (h: hlist f1 l):
+  hlist_map f2 f3 g2 l (hlist_map f1 f2 g1 l h) = hlist_map f1 f3 (fun a (x: f1 a) => g2 a (g1 a x)) l h.
+Proof.
+  generalize dependent f3.
+  apply hlist_map_elim.
+  - reflexivity.
+  - clear. intros A f1 f2 g x l1 a1 htl IH f3 g2. rewrite !hlist_map_equation_2. f_equal. apply IH.
+Qed.
+
+Lemma hlist_map_id {A: Type} (f: A -> Type) (g: forall a, f a -> f a) (l: list A) (h: hlist f l):
+  (forall (x: A) (y: f x), g x y = y) ->
+  hlist_map f f g l h = h.
+Proof.
+  (*The elimination principle is not so useful here*)
+  intros Hext. induction l as [| h1 t1 IH].
+  - pose proof (hlist_nil h). subst. reflexivity.
+  - pose proof (hlist_inv h) as Heq. rewrite Heq. rewrite hlist_map_equation_2.  f_equal; auto.
 Qed. 
+
+Lemma hlist_map_hnth {A: Type} (f1 f2: A -> Type) (g: forall a, f1 a -> f2 a) (l: list A) (h: hlist f1 l) i
+  (Hi: i < length l) (d1: A) (d2: f1 d1) (d3: f2 d1):
+  hnth i (hlist_map f1 f2 g l h) d1 d3 = g (nth i l _) (hnth i h d1 d2).
+Proof.
+  generalize dependent i.
+  induction l as [| h1 t1 IH]; simpl; [lia|].
+  pose proof (hlist_inv h) as Heq. rewrite Heq, hlist_map_equation_2. simpl.
+  intros [|i'] Hi; auto.
+  apply IH. lia.
+Qed.
