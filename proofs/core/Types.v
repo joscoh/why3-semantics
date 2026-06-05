@@ -671,7 +671,7 @@ Qed.
 
 Lemma v_subst_cons {f} ts vs:
   v_subst f (vty_cons ts vs) =
-  s_cons ts (map (v_subst f) vs).
+  s_cons ts (List.map (v_subst f) vs).
 Proof. reflexivity. Qed.
 
 Lemma v_subst_twice f ty:

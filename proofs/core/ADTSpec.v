@@ -96,4 +96,58 @@ Record adt_interp_props {gamma: context} (gamma_valid: valid_context gamma)
     forall t t_in (x: adt_rep pd t srts), P t t_in x;
   }.
 
+Definition pf_same_constrs {g1 g2: context} (gamma_valid1: valid_context g1) (gamma_valid2: valid_context g2)
+  {pd : sort -> Set} (pf1 pf2: fun_interp pd) : Prop :=
+  forall {m a c srts} (m_in1: mut_in_ctx m g1) (m_in2: mut_in_ctx m g2) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+    (srts_len: length srts = length (m_params m)) (args: arg_list (domain pd) (sym_sigma_args c srts)),
+    constr_rep gamma_valid1 pd pf1 m_in1 a_in c_in srts_len args =
+      constr_rep gamma_valid2 pd pf2 m_in2 a_in c_in srts_len args.
 
+(*TODO: move*)
+(*We need a transparent version*)
+Definition f_equal2 {A1 A2 B: Type} (f: A1 -> A2 -> B) {x1 y1: A1} {x2 y2: A2} (Heq1: x1 = y1) (Heq2: x2 = y2):
+  f x1 x2 = f y1 y2.
+Proof.
+  f_equal.
+  - exact Heq1.
+  - exact Heq2.
+Defined.
+
+(*Any two instances of [adt_interp_props] for the same pd have the same [find_constr_rep]*)
+Lemma find_constr_rep_equiv  {g1 g2: context} (gamma_valid1: valid_context g1) (gamma_valid2: valid_context g2) 
+  {pd: sort -> Set} {pf1 pf2: fun_interp pd} (pf_eq: pf_same_constrs gamma_valid1 gamma_valid2 pf1 pf2)
+  (a1: adt_interp_props gamma_valid1 pd pf1) (a2: adt_interp_props gamma_valid2 pd pf2):
+  forall {m a} (m_in1: mut_in_ctx m g1) (m_in2: mut_in_ctx m g2) (a_in: adt_in_mut a m) {srts1 srts2}
+    (srts_eq: srts1 = srts2)
+    (srts_len1: length srts1 = length (m_params m))
+    (srts_len2: length srts2 = length (m_params m))
+    (x1: adt_rep pd a srts1)
+    (x2: adt_rep pd a srts2)
+    (x_eq: x2 = scast (f_equal (adt_rep pd a) srts_eq) x1),
+    let y1 := find_constr_rep gamma_valid1 _ _ a1 m_in1 a_in srts_len1 x1 in
+    let y2 := find_constr_rep gamma_valid2 _ _ a2 m_in2 a_in srts_len2 x2 in
+    exists (Heq: projT1 y1 = projT1 y2),
+      snd (proj1_sig (projT2 y1)) = cast_arg_list (f_equal2 (fun (x: funsym) (s: list sort) =>
+                                                               sym_sigma_args x s) (eq_sym Heq) (eq_sym srts_eq))
+                                      (snd (proj1_sig (projT2 y2))).
+Proof.
+  intros m a m_in1 m_in2 a_in srts1 srts2 srts_eq srts_len1 srts_len2 x1 x2 x_eq y1 y2.
+  subst. assert (srts_len1 = srts_len2) by (apply UIP_dec, Nat.eq_dec). subst.
+  destruct a1 as [inj1 disj1 find1 ind1].
+  destruct a2 as [inj2 disj2 find2 ind2].
+  simpl in y1, y2.
+  (*Idea: if funsyms not equal, then contradicts disjointness*)
+  destruct y1 as [c1 [[c1_in a1] Hx1]].
+  destruct y2 as [c2 [[c2_in a2] Hx2]].
+  simpl.
+  unfold pf_same_constrs in pf_eq.
+  assert (Hrep:=pf_eq m a c1 srts2 m_in1 m_in2 a_in c1_in srts_len2 a1).
+  simpl in Hx1, Hx2.
+  rewrite Hrep in Hx1.
+  rewrite Hx1 in Hx2.
+  (*Idea: if constrs same, use inj, else use disjoint*)
+  destruct (funsym_eq_dec c1 c2).
+  - subst. assert (c1_in = c2_in) by (apply bool_irrelevance). subst.
+    apply inj2 in Hx2. subst. exists eq_refl. reflexivity.
+  - apply disj2 in Hx2; auto. contradiction.
+Qed.
