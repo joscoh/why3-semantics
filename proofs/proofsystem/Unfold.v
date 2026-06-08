@@ -59,14 +59,13 @@ Definition unfold_f_aux (f1: formula) (args: list vsymbol) (body: term) :=
 End FindFun.
 
 Lemma val_with_args_lookup {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt)
   (m: amap vsymbol term)
   (x: vsymbol) (t: term) (Hlookup: amap_lookup m x = Some t) Hlen Hall Hty2:
-  val_with_args pd vt vv (keylist m) (map_arg_list gamma_valid pd pdf vt pf vv (vals m) (map snd (keylist m))
+  val_with_args pd vt vv (keylist m) (map_arg_list gamma_valid pd vt pf vv (vals m) (map snd (keylist m))
     Hlen Hall) x =
-  term_rep gamma_valid pd pdf vt pf vv t (snd x) Hty2.
+  term_rep gamma_valid pd pf vt vv t (snd x) Hty2.
 Proof.
   (*Idea: find ith element, use result*)
   assert (Hinelts: In (x, t) (elements m)) by (rewrite in_elements_iff; auto).
@@ -94,7 +93,7 @@ Proof.
   (*Now generalize and remove casts*)
   rewrite !dom_cast_compose. gen_dom_cast. 
   repeat match goal with
-  | |- context [term_rep ?g ?pd ?pdf ?vt ?pf ?vv ?t ?ty ?Hty] =>
+  | |- context [term_rep ?g ?pd ?pf ?vt ?vv ?t ?ty ?Hty] =>
     generalize dependent Hty
   end. rewrite map_nth_inbound with (d2:=vs_d); [| rewrite keylist_length; auto].
   rewrite Hi1, Hi2. intros Hty1 Hty2 Heq. assert (Heq = eq_refl) by (apply UIP_dec, sort_eq_dec).
@@ -109,13 +108,12 @@ Theorem sub_body_t_rep {gamma} (gamma_valid: valid_context gamma)
   (tms: list term) (tys: list vty)
   (Hlenat: length args = length tms)
   (Htysval: Forall (valid_type gamma) tys)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (pf_full: full_interp gamma_valid pd pf)
   (vt: val_typevar) (vv: val_vars pd vt)
   (ty: vty) Hty1 Hty2:
-  term_rep gamma_valid pd pdf vt pf vv (sub_body_t f args body tys tms) ty Hty1 =
-  term_rep gamma_valid pd pdf vt pf vv (Tfun f tys tms) ty Hty2.
+  term_rep gamma_valid pd pf vt vv (sub_body_t f args body tys tms) ty Hty1 =
+  term_rep gamma_valid pd pf vt vv (Tfun f tys tms) ty Hty2.
 Proof.
   (*Get some info from typing*)
   pose proof (fun_defined_valid gamma_valid f_in) as Hdef.
@@ -131,7 +129,7 @@ Proof.
     rewrite length_map; auto.
   }
   rewrite (Hfuns f args body f_in (map (v_subst vt) tys) Hmaplen
-  (fun_arg_list pd vt f tys tms (term_rep gamma_valid pd pdf vt pf vv) Hty2) vt vv).
+  (fun_arg_list pd vt f tys tms (term_rep gamma_valid pd pf vt vv) Hty2) vt vv).
   unfold cast_dom_vty.
   rewrite !dom_cast_compose.
   (*Simplify LHS*)
@@ -285,7 +283,7 @@ Proof.
     - rewrite <- Hargs. rewrite in_map_iff.
       exists (nth i args vs_d); auto.
   }
-  erewrite (get_arg_list_hnth pd vt f tys tms (term_rep gamma_valid pd pdf vt pf vv) 
+  erewrite (get_arg_list_hnth pd vt f tys tms (term_rep gamma_valid pd pf vt vv) 
   (ltac:(intros; apply term_rep_irrel)) (s_params_Nodup f) (proj1' (fun_ty_inv Hty2)) (proj1' (proj2' (fun_ty_inv Hty2)))
   (proj1' (proj2' (proj2' (fun_ty_inv Hty2))))).
   Unshelve.
@@ -295,7 +293,7 @@ Proof.
   rewrite !dom_cast_compose.
   gen_dom_cast.
   repeat match goal with
-  | |- context [term_rep ?g ?pd ?pdf ?vt ?pf ?vv ?t ?ty ?Hty] =>
+  | |- context [term_rep ?g ?pd ?pf ?vt ?vv ?t ?ty ?Hty] =>
     generalize dependent Hty
   end.
   erewrite ty_subst_equiv; auto.
@@ -648,13 +646,13 @@ Qed.
 (*And now we prove the correctness*)
 Lemma unfold_f_rep {gamma} (gamma_valid: valid_context gamma) 
   (f: funsym) (fmla: formula)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (pf_full: full_interp gamma_valid pd pf)
   (vt: val_typevar) (vv: val_vars pd vt)
   (Hty1: formula_typed gamma fmla)
   (Hty2: formula_typed gamma (unfold_f gamma f fmla)):
-  formula_rep gamma_valid pd pdf vt pf vv (unfold_f gamma f fmla) Hty2 =
-  formula_rep gamma_valid pd pdf vt pf vv fmla Hty1.
+  formula_rep gamma_valid pd pf vt vv (unfold_f gamma f fmla) Hty2 =
+  formula_rep gamma_valid pd pf vt vv fmla Hty1.
 Proof.
   revert Hty2.
   unfold unfold_f.
@@ -671,12 +669,12 @@ Proof.
   assert (forall l base Hty2 Hty3
     (Hl: forall x y, In (x, y) l -> exists ty, 
       term_has_type gamma (Tfun f x y) ty),
-    formula_rep gamma_valid pd pdf vt pf vv base Hty2 =
-    formula_rep gamma_valid pd pdf vt pf vv fmla Hty1 ->
-    formula_rep gamma_valid pd pdf vt pf vv
+    formula_rep gamma_valid pd pf vt vv base Hty2 =
+    formula_rep gamma_valid pd pf vt vv fmla Hty1 ->
+    formula_rep gamma_valid pd pf vt vv
       (fold_left (fun acc x => sub_fun_body_f f args body (fst x) (snd x) acc) l base)
     Hty3 =
-    formula_rep gamma_valid pd pdf vt pf vv fmla Hty1).
+    formula_rep gamma_valid pd pf vt vv fmla Hty1).
   {
     induction l; simpl; intros.
     - erewrite fmla_rep_irrel. rewrite H. apply fmla_rep_irrel.
@@ -720,15 +718,14 @@ Qed.
 (*And the results for [unfold_f_single]*)
 Lemma unfold_f_single_rep {gamma} (gamma_valid: valid_context gamma) 
   (f: funsym) (fmla: formula)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (pf_full: full_interp gamma_valid pd pf)
   (vt: val_typevar) (vv: val_vars pd vt)
   (i: nat)
   (Hty1: formula_typed gamma fmla)
   (Hty2: formula_typed gamma (unfold_f_single gamma f i fmla)):
-  formula_rep gamma_valid pd pdf vt pf vv (unfold_f_single gamma f i fmla) Hty2 =
-  formula_rep gamma_valid pd pdf vt pf vv fmla Hty1.
+  formula_rep gamma_valid pd pf vt vv (unfold_f_single gamma f i fmla) Hty2 =
+  formula_rep gamma_valid pd pf vt vv fmla Hty1.
 Proof.
   revert Hty2.
   unfold unfold_f_single.
@@ -869,11 +866,11 @@ Theorem sub_body_f_rep {gamma} (gamma_valid: valid_context gamma)
   (tms: list term) (tys: list vty)
   (Hlenat: length args = length tms)
   (Htysval: Forall (valid_type gamma) tys)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (pf_full: full_interp gamma_valid pd pf)
   (vt: val_typevar) (vv: val_vars pd vt) Hty1 Hty2:
-  formula_rep gamma_valid pd pdf vt pf vv (sub_body_f p args body tys tms) Hty1 =
-  formula_rep gamma_valid pd pdf vt pf vv (Fpred p tys tms) Hty2.
+  formula_rep gamma_valid pd pf vt vv (sub_body_f p args body tys tms) Hty1 =
+  formula_rep gamma_valid pd pf vt vv (Fpred p tys tms) Hty2.
 Proof.
   (*Get some info from typing*)
   pose proof (pred_defined_valid gamma_valid p_in) as Hdef.
@@ -889,7 +886,7 @@ Proof.
     rewrite length_map; auto.
   }
   rewrite (Hpreds p args body p_in (map (v_subst vt) tys) Hmaplen
-  (pred_arg_list pd vt p tys tms (term_rep gamma_valid pd pdf vt pf vv) Hty2) vt vv).
+  (pred_arg_list pd vt p tys tms (term_rep gamma_valid pd pf vt vv) Hty2) vt vv).
   (*Simplify LHS*)
   revert Hty1. unfold sub_body_f.
   intros.
@@ -1025,7 +1022,7 @@ Proof.
     - rewrite <- Hargs. rewrite in_map_iff.
       exists (nth i args vs_d); auto.
   }
-  erewrite (get_arg_list_hnth pd vt p tys tms (term_rep gamma_valid pd pdf vt pf vv) 
+  erewrite (get_arg_list_hnth pd vt p tys tms (term_rep gamma_valid pd pf vt vv) 
   (ltac:(intros; apply term_rep_irrel)) (s_params_Nodup p) (proj1' (pred_val_inv Hty2)) (proj1' (proj2' (pred_val_inv Hty2)))
   (proj2' (proj2' (pred_val_inv Hty2)))).
   Unshelve.
@@ -1035,7 +1032,7 @@ Proof.
   rewrite !dom_cast_compose.
   gen_dom_cast.
   repeat match goal with
-  | |- context [term_rep ?g ?pd ?pdf ?vt ?pf ?vv ?t ?ty ?Hty] =>
+  | |- context [term_rep ?g ?pd ?pf ?vt ?vv ?t ?ty ?Hty] =>
     generalize dependent Hty
   end.
   erewrite ty_subst_equiv; auto.
@@ -1357,13 +1354,13 @@ Qed.
 (*And now we prove the correctness*)
 Lemma unfold_p_rep {gamma} (gamma_valid: valid_context gamma) 
   (p: predsym) (fmla: formula)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (pf_full: full_interp gamma_valid pd pf)
   (vt: val_typevar) (vv: val_vars pd vt)
   (Hty1: formula_typed gamma fmla)
   (Hty2: formula_typed gamma (unfold_p gamma p fmla)):
-  formula_rep gamma_valid pd pdf vt pf vv (unfold_p gamma p fmla) Hty2 =
-  formula_rep gamma_valid pd pdf vt pf vv fmla Hty1.
+  formula_rep gamma_valid pd pf vt vv (unfold_p gamma p fmla) Hty2 =
+  formula_rep gamma_valid pd pf vt vv fmla Hty1.
 Proof.
   revert Hty2.
   unfold unfold_p.
@@ -1380,12 +1377,12 @@ Proof.
   assert (forall l base Hty2 Hty3
     (Hl: forall x y, In (x, y) l ->
       formula_typed gamma (Fpred p x y)),
-    formula_rep gamma_valid pd pdf vt pf vv base Hty2 =
-    formula_rep gamma_valid pd pdf vt pf vv fmla Hty1 ->
-    formula_rep gamma_valid pd pdf vt pf vv
+    formula_rep gamma_valid pd pf vt vv base Hty2 =
+    formula_rep gamma_valid pd pf vt vv fmla Hty1 ->
+    formula_rep gamma_valid pd pf vt vv
       (fold_left (fun acc x => sub_pred_body_f p args body (fst x) (snd x) acc) l base)
     Hty3 =
-    formula_rep gamma_valid pd pdf vt pf vv fmla Hty1).
+    formula_rep gamma_valid pd pf vt vv fmla Hty1).
   {
     induction l; simpl; intros.
     - erewrite fmla_rep_irrel. rewrite H. apply fmla_rep_irrel.
@@ -1421,14 +1418,14 @@ Qed.
 (*And the results for [unfold_f_single]*)
 Lemma unfold_p_single_rep {gamma} (gamma_valid: valid_context gamma) 
   (p: predsym) (fmla: formula)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (pf_full: full_interp gamma_valid pd pf)
   (vt: val_typevar) (vv: val_vars pd vt)
   (i: nat)
   (Hty1: formula_typed gamma fmla)
   (Hty2: formula_typed gamma (unfold_p_single gamma p i fmla)):
-  formula_rep gamma_valid pd pdf vt pf vv (unfold_p_single gamma p i fmla) Hty2 =
-  formula_rep gamma_valid pd pdf vt pf vv fmla Hty1.
+  formula_rep gamma_valid pd pf vt vv (unfold_p_single gamma p i fmla) Hty2 =
+  formula_rep gamma_valid pd pf vt vv fmla Hty1.
 Proof.
   revert Hty2.
   unfold unfold_p_single.

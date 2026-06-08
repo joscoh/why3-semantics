@@ -2,7 +2,8 @@
 Require Export Interp. (*NOTE: require this so that
   we can refer to Interp.adts - 
   could generalize for any proof and just use IndTypes.v*)
-
+Require Import IndTypes.
+          
 Section Induction.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)

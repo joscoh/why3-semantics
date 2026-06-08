@@ -114,6 +114,12 @@ Proof.
   intros Hcast. subst. simpl in Hcast. subst. simpl. reflexivity.
 Qed.
 
+Lemma scast_switch' {A B: Set} (H: A = B) (x: A) (y: B):
+  scast H x = y -> x = scast (eq_sym H) y.
+Proof.
+  intros Hy. subst. reflexivity.
+Qed.
+
 (*Basically UIP for x = y instead of x = x*)
 Lemma dec_uip_diff {A: Set} {x1 x2: A} 
   (eq_dec: forall (x y: A), {x= y} + {x <> y}) 
@@ -166,3 +172,12 @@ Lemma cast_list_nth: forall {A B: Set} (l: list A) (Heq: A = B)
 Proof.
   intros. subst. reflexivity.
 Qed. 
+
+(*We need a transparent version*)
+Definition f_equal2 {A1 A2 B: Type} (f: A1 -> A2 -> B) {x1 y1: A1} {x2 y2: A2} (Heq1: x1 = y1) (Heq2: x2 = y2):
+  f x1 x2 = f y1 y2.
+Proof.
+  f_equal.
+  - exact Heq1.
+  - exact Heq2.
+Defined.

@@ -76,10 +76,10 @@ Record pi_funpred (pd: pi_dom) := {
     constr_rep_dom gamma_valid m Hm srts Hlens (dom_aux pd) a Ha
       c Hc (adts pdf m srts) args*)
 
-}.
+  }.
 
 (*Useful for defaults*)
-Definition dom_int (pd: pi_dom) : domain (dom_aux pd) s_int := 0%Z.
+Definition dom_int (pd: pi_dom) : domain (dom_aux pd) s_int := dom_int_aux (dom_aux pd).
 
 (*Valuations*)
 (*A valuation maps type variables to sorts*)
@@ -308,8 +308,7 @@ Proof.
       * (*i=0*) 
         destruct (vsymbol_eq_dec a a); try contradiction.
         destruct (vty_eq_dec (val (snd a)) x); subst.
-        -- unfold dom_cast.
-          f_equal. f_equal. apply dec_uip_diff. apply sort_eq_dec.
+        -- apply dom_cast_eq.
         -- exfalso. apply n.
           simpl in Heq. subst. reflexivity.
       * (*i <> 0*) inversion Hnodup; subst.
@@ -610,11 +609,197 @@ End VTUtil.
 
 End Interp.
 
+(*Give definitions of ADT parts in terms of pd and pf, avoid some boilerplate*)
+
+Definition adt_rep (pd: pi_dom) (a: alg_datatype) (srts: list sort) := ADTSpec.adt_rep (dom_aux pd) a srts.
+
+Definition constr_rep {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  {m a c srts} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+  (srts_len: length srts = length (m_params m))
+  (args: arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args c srts)) :
+  adt_rep pd a srts :=
+  ADTSpec.constr_rep gamma_valid (dom_aux pd) (funs gamma_valid pd pf) m_in a_in c_in srts_len args.
+
+Lemma constrs_eq {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+    {m a c srts} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+    (srts_len: length srts = length (m_params m))
+    (args: arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args c srts)):
+    funs gamma_valid pd pf c srts args =
+      dom_cast (dom_aux pd) (adt_typesym_funsym gamma_valid m_in a_in c_in srts_len)
+        (constr_rep gamma_valid pd pf m_in a_in c_in srts_len args).
+Proof.
+  unfold constr_rep, ADTSpec.constr_rep. rewrite !dom_cast_compose. rewrite dom_cast_refl. reflexivity.
+Qed.
+
+Lemma constrs_inj {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  {m a c srts} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+  (srts_len: length srts = length (m_params m)) (a1 a2: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)):
+  constr_rep gamma_valid pd pf m_in a_in c_in srts_len a1 =
+  constr_rep gamma_valid pd pf m_in a_in c_in srts_len a2 ->
+  a1 = a2.
+Proof.
+  apply ADTSpec.constrs_inj, (adt_props gamma_valid pd pf).
+Qed.
+
+Lemma constrs_disj {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  {m a f1 f2 srts} (m_in : mut_in_ctx m gamma) (a_in : adt_in_mut a m)
+  (f1_in : constr_in_adt f1 a) (f2_in : constr_in_adt f2 a)
+  (srts_len : length srts = length (m_params m))
+  (a1 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f1 srts))
+  (a2 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f2 srts)):
+  f1 <> f2 ->
+  constr_rep gamma_valid pd pf m_in a_in f1_in srts_len a1 <>
+  constr_rep gamma_valid pd pf m_in a_in f2_in srts_len a2.
+Proof.
+  apply ADTSpec.constrs_disj, (adt_props gamma_valid pd pf).
+Qed.
+
+Lemma find_constr_rep {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+   {m a srts} (m_in : mut_in_ctx m gamma) (a_in : adt_in_mut a m)
+   (srts_len : length srts = length (m_params m))
+   (x : adt_rep pd a srts):
+   {f : funsym &
+     {Hf : constr_in_adt f a * arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f srts)
+     | x = constr_rep gamma_valid pd pf m_in a_in (fst Hf) srts_len (snd Hf)}}.
+Proof.
+  apply ADTSpec.find_constr_rep, (adt_props gamma_valid pd pf).
+Qed.
+
+Lemma adt_ind {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  {m srts} (m_in: mut_in_ctx m gamma) (srts_len: length srts = length (m_params m))
+  (P: forall t, adt_in_mut t m -> adt_rep pd t srts -> Prop):
+  (forall (t : alg_datatype) (t_in : adt_in_mut t m) (x : adt_rep pd t srts) 
+          (c : funsym) (c_in : constr_in_adt c t)
+          (a : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args c srts)),
+          x = constr_rep gamma_valid pd pf m_in t_in c_in srts_len a ->
+          (forall (i : nat) (t' : alg_datatype) (t_in' : adt_in_mut t' m)
+               (Heq : nth i (sym_sigma_args c srts) s_int = s_cons (adt_name t') srts),
+              i < Datatypes.length (s_args c) ->
+              P t' t_in' (dom_cast (dom_aux pd) Heq (hnth i a s_int (dom_int pd)))) ->
+              P t t_in x) ->
+  forall (t : alg_datatype) (t_in : adt_in_mut t m) (x : adt_rep pd t srts), P t t_in x.
+Proof.
+  apply ADTSpec.adt_ind, (adt_props gamma_valid pd pf).
+Qed.
+
+(*A stronger version of injectivity for constrs+args, fixed context*)
+Lemma constrs_inj_strong {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  {m a f1 f2 srts} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
+  (f1_in : constr_in_adt f1 a) (f2_in : constr_in_adt f2 a)
+  (srts_len : length srts = length (m_params m))
+  (a1 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f1 srts))
+  (a2 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f2 srts)):
+  constr_rep gamma_valid pd pf m_in a_in f1_in srts_len a1 =
+  constr_rep gamma_valid pd pf m_in a_in f2_in srts_len a2 ->
+  exists (Heq: f1 = f2), a2 = cast_arg_list (f_equal (fun (x: funsym) => sym_sigma_args x srts) Heq) a1.
+Proof.
+  intros Heq.
+  destruct (funsym_eq_dec f1 f2).
+  2: { apply constrs_disj in Heq; auto. contradiction. }
+  subst. exists eq_refl. unfold cast_arg_list; simpl.
+  assert (f1_in = f2_in) by (apply bool_irrelevance). subst.
+  apply constrs_inj in Heq; subst; reflexivity.
+Qed.
+
+Definition pf_same_constrs {g1 g2: context} {gamma_valid1: valid_context g1} {gamma_valid2: valid_context g2}
+  {pd : pi_dom} (pf1: pi_funpred gamma_valid1 pd) (pf2: pi_funpred gamma_valid2 pd) : Prop :=
+  ADTSpec.pf_same_constrs gamma_valid1 gamma_valid2 (funs gamma_valid1 pd pf1) (funs gamma_valid2 pd pf2).
+
+Lemma pf_same_constrs_refl {g} {gamma_valid: valid_context g} {pd} (pf1 pf2: pi_funpred gamma_valid pd):
+  funs gamma_valid pd pf1 = funs gamma_valid pd pf2 ->
+  pf_same_constrs pf1 pf2.
+Proof.
+  intros Hfuns. unfold pf_same_constrs. rewrite Hfuns.
+  apply ADTSpec.pf_same_constrs_refl.
+Qed.
+
+(*Generalized over context*)
+Lemma constrs_inj_strong' {g1 g2} (g1_valid: valid_context g1) (g2_valid: valid_context g2)
+  (pd: pi_dom) (pf1: pi_funpred g1_valid pd) (pf2: pi_funpred g2_valid pd)
+  (pf_eq: pf_same_constrs pf1 pf2)
+  {m a f1 f2 srts} (m_in1: mut_in_ctx m g1) (m_in2: mut_in_ctx m g2) (a_in: adt_in_mut a m)
+  (f1_in : constr_in_adt f1 a) (f2_in : constr_in_adt f2 a)
+  (srts_len : length srts = length (m_params m))
+  (a1 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f1 srts))
+  (a2 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f2 srts)):
+  constr_rep g1_valid pd pf1 m_in1 a_in f1_in srts_len a1 =
+  constr_rep g2_valid pd pf2 m_in2 a_in f2_in srts_len a2 ->
+  exists (Heq: f1 = f2), a2 = cast_arg_list (f_equal (fun (x: funsym) => sym_sigma_args x srts) Heq) a1.
+Proof.
+  unfold constr_rep. rewrite pf_eq with (m_in2:=m_in2).
+  apply constrs_inj_strong.
+Qed.
+
+Lemma constrs_inj_iff_strong {gamma} (gamma_valid: valid_context gamma) {m a c1 c2}
+  (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c1_in: constr_in_adt c1 a)
+  (c2_in: constr_in_adt c2 a) {srts} (srts_len: length srts = length (m_params m))
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (a1: arg_list (domain (dom_aux pd)) (sym_sigma_args c1 srts))
+  (a2: arg_list (domain (dom_aux pd)) (sym_sigma_args c2 srts)):
+    constr_rep gamma_valid pd pf m_in a_in c1_in srts_len a1 =
+    constr_rep gamma_valid pd pf m_in a_in c2_in srts_len a2 <->
+    exists (Heq: c1 = c2), a2 = cast_arg_list (f_equal (fun (c: funsym) => sym_sigma_args c srts) Heq) a1.
+Proof.
+  split.
+  - intros Hrep.
+    apply constrs_inj_strong in Hrep; auto.
+  - intros [Hc Ha2]. subst. assert (c1_in = c2_in) by (apply bool_irrelevance). subst; reflexivity.
+Qed.
+
+Definition mk_pf_from_existing_aux {g1 g2} (g1_valid: valid_context g1) (g2_valid: valid_context g2)
+  (Hmut: forall m, mut_in_ctx m g2 -> mut_in_ctx m g1)
+  (pd: pi_dom) (pf: pi_funpred g1_valid pd)
+  (funs2: forall (f: funsym) srts, arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
+                        domain (dom_aux pd) (funsym_sigma_ret f srts))
+  (preds2: forall (p: predsym) srts, arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool)
+  (constrs: ADTSpec.pf_same_constrs g1_valid g2_valid (funs g1_valid pd pf) funs2):
+  pi_funpred g2_valid pd :=
+  Build_pi_funpred g2_valid pd funs2 preds2 (pf_same_constrs_adt_props g1_valid g2_valid
+                                                  Hmut constrs (adt_props g1_valid pd pf)).
+
+Definition mk_pf_from_existing {gamma} (gamma_valid: valid_context gamma)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+  (funs2: forall (f: funsym) srts, arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
+                        domain (dom_aux pd) (funsym_sigma_ret f srts))
+  (preds2: forall (p: predsym) srts, arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool)
+  (constrs: ADTSpec.pf_same_constrs gamma_valid gamma_valid (funs gamma_valid pd pf) funs2):
+  pi_funpred gamma_valid pd :=
+  mk_pf_from_existing_aux gamma_valid gamma_valid (ltac:(auto)) pd pf funs2 preds2 constrs.
+
 (*Arguments adts {_} {_}.*)
 (* Arguments funs {_} _ _ {_}. *)
 (* Arguments preds {_} _ _ {_}. *)
 
 (*Change interp if gamma changes (but muts are the same)*)
+Lemma change_gamma_constrs {gamma1 gamma2}
+  (gamma1_valid: valid_context gamma1) (gamma2_valid: valid_context gamma2)
+  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
+  (pd: pi_dom)
+  (pf: pi_funpred gamma1_valid pd) :
+  ADTSpec.pf_same_constrs gamma1_valid gamma2_valid (funs gamma1_valid pd pf) (funs gamma1_valid pd pf).
+Proof.
+  unfold ADTSpec.pf_same_constrs. intros m a c srts m_in1 m_in2 a_in c_in srts_len args.
+  unfold ADTSpec.constr_rep. apply dom_cast_eq.
+Qed.
+
+Lemma mut_in_ctx_eq_ctx {g1 g2} (Hm: mut_of_context g1 = mut_of_context g2):
+  forall m, mut_in_ctx m g2 -> mut_in_ctx m g1.
+Proof.
+  intros m.
+  apply mut_in_ctx_sublist.
+  rewrite Hm. apply sublist_refl.
+Qed.
+
+Definition change_gamma_pf {gamma1 gamma2}
+  (gamma1_valid: valid_context gamma1) (gamma2_valid: valid_context gamma2)
+  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
+  (pd: pi_dom)
+  (pf: pi_funpred gamma1_valid pd) :
+  pi_funpred gamma2_valid pd :=
+  mk_pf_from_existing_aux gamma1_valid gamma2_valid (mut_in_ctx_eq_ctx Hm)
+    pd pf (funs gamma1_valid pd pf) (preds gamma1_valid pd pf)
+  (change_gamma_constrs gamma1_valid gamma2_valid Hm pd pf).
+
 (*Lemma change_gamma_adts {gamma1 gamma2} 
   (Hm: mut_of_context gamma1 = mut_of_context gamma2)
   (pd: pi_dom)

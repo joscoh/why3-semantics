@@ -29,8 +29,8 @@ Section NewInterp.
 Section Funs.
 
 Context {gamma: context} (gamma_valid: valid_context gamma).
-Variable (pd: pi_dom) (pdf: pi_dom_full gamma pd).
-Variable (pf: pi_funpred gamma_valid pd pdf).
+Variable (pd: pi_dom).
+Variable (pf: pi_funpred gamma_valid pd).
 
 Section FunDef. 
 (*badnames is here so we can instantiate it later*)
@@ -132,9 +132,9 @@ Definition get_hd_adt_rep {m a f} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a
   {srts: list sort} (srts_len: length srts = length (m_params m))
   (args: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
   (Heq: sym_sigma_args f srts = [s_cons (adt_name a) srts]):
-  { x: adt_rep m srts (dom_aux pd) a a_in |
+  { x: adt_rep pd a srts |
     args = cast_arg_list (eq_sym Heq)
-      (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in srts_len)) x) (HL_nil _))}.
+      (HL_cons (domain (dom_aux pd)) _ _  x (HL_nil _))}.
 Proof.
   (*This proof can be opaque, since we give the rewrite rule in a sigma type*)
   generalize dependent args.
@@ -142,10 +142,8 @@ Proof.
   simpl.
   intros args.
   rewrite (hlist_inv args).
-  set (x := hlist_hd args) in *.
-  apply (exist _ (scast (adts pdf m srts a m_in a_in srts_len) x)).
+  apply (exist _ (hlist_hd args)).
   unfold cast_arg_list. simpl.
-  rewrite scast_eq_sym.
   f_equal.
   apply hlist_nil.
 Qed.
@@ -161,12 +159,12 @@ Definition proj_args_eq (c: funsym) (f: funsym) (n: nat)
   (srts: list sort) 
   (srts_len: length srts = length (m_params m))
   (args: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)):
-  { x: adt_rep m srts (dom_aux pd) a a_in |
+  { x: adt_rep pd a srts |
     args = cast_arg_list (eq_sym (projection_syms_sigma_args srts (in_proj_syms Hn f_nth) 
       m_in a_in c_in srts_len)) 
-      (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in srts_len)) x) (HL_nil _))}.
+      (HL_cons (domain (dom_aux pd)) _ _ x (HL_nil _))}.
 Proof.
-  apply get_hd_adt_rep.
+  apply (get_hd_adt_rep m_in); auto.
 Qed.
 
 (*One final typecast we need*)
@@ -198,8 +196,7 @@ Definition proj_interp (c: funsym) (f: funsym) (n: nat)
   let x := proj1_sig (proj_args_eq c f n 
     (proj1 (Nat.ltb_lt _ _) Hn) f_nth m_in a_in c_in srts srts_len args) in
   (*Step 2: use [find_constr_rep] on x to get the constructor and arguments*)
-  let Hrep := (find_constr_rep gamma_valid m m_in srts srts_len _ a a_in (adts pdf m srts)
-    (gamma_all_unif gamma_valid _ m_in) x) in
+  let Hrep := find_constr_rep gamma_valid pd pf m_in a_in srts_len x in
   let c1 : funsym := projT1 Hrep in
   let args1 := snd (proj1_sig (projT2 Hrep)) in
   (*Step 3: If c <> c1 (i.e., this adt belongs to another constructor), just return default 
@@ -300,20 +297,17 @@ Lemma selector_args_eq {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a 
   (s1: sort) (srts: list sort) (srts_len: length srts = length (m_params m))
   (args: arg_list (domain (dom_aux pd)) 
     (sym_sigma_args (selector_funsym badnames (adt_name a) csl) (s1 :: srts))):
-  {x : adt_rep m srts (dom_aux pd) a a_in * 
+  {x : adt_rep pd a srts * 
     arg_list (domain (dom_aux pd)) (repeat s1 (length csl)) |
     args = cast_arg_list (eq_sym (selector_sigma_args csl m_in a_in srts_len)) 
-      (HL_cons _ _ _ (scast (eq_sym (adts pdf m srts a m_in a_in srts_len)) (fst x)) (snd x))
+      (HL_cons _ (s_cons (adt_name a) srts) _ (fst x) (snd x))
   }.
 Proof.
   generalize dependent args.
   rewrite (@selector_sigma_args _ _ s1 _ csl m_in a_in srts_len).
   simpl. intros args.
   rewrite (hlist_inv args).
-  set (x := hlist_hd args) in *.
-  apply (exist _ ((scast (adts pdf m srts a m_in a_in srts_len) x), hlist_tl args)).
-  unfold cast_arg_list. simpl.
-  rewrite scast_eq_sym.
+  apply (exist _ (hlist_hd args, hlist_tl args)).
   reflexivity.
 Qed.
 
@@ -342,8 +336,7 @@ Definition selector_interp {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a 
   let x1 := fst x in (*adt rep*)
   let x2 := snd x in (*hlist with (length cs) args*)
   (*Step 2: use [find_constr_rep] on x to get the constructor and arguments*)
-  let Hrep := (find_constr_rep gamma_valid m m_in srts srts_len _ a a_in (adts pdf m srts)
-    (gamma_all_unif gamma_valid _ m_in) x1) in
+  let Hrep := (find_constr_rep gamma_valid pd pf m_in a_in srts_len x1) in
   let c1 : funsym := projT1 Hrep in
   let c1_in : constr_in_adt c1 a := fst (proj1_sig (projT2 Hrep)) in
   let Hinc: In c1 csl := (proj1 (constr_in_adt_eq c1 a) c1_in) in
@@ -399,11 +392,11 @@ Definition indexer_args_eq
   {srts: list sort} 
   (srts_len: length srts = length (m_params m))
   (args: arg_list (domain (dom_aux pd)) (sym_sigma_args (indexer_funsym badnames (adt_name a)) srts)):
-  { x: adt_rep m srts (dom_aux pd) a a_in |
+  { x: adt_rep pd a srts |
     args = cast_arg_list (eq_sym (indexer_sigma_args m_in a_in srts_len)) 
-      (HL_cons (domain (dom_aux pd)) _ _ (scast (eq_sym (adts pdf m srts a m_in a_in srts_len)) x) (HL_nil _))}.
+      (HL_cons (domain (dom_aux pd)) _ _ x (HL_nil _))}.
 Proof.
-  apply get_hd_adt_rep.
+  apply (get_hd_adt_rep m_in); auto.
 Qed.
 
 (*Finally, ret is int*)
@@ -423,8 +416,7 @@ Definition indexer_interp {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m
   (*Step 1: get ADT rep*)
   let x := proj1_sig (indexer_args_eq m_in a_in srts_len args) in
   (*Step 2: use [find_constr_rep] on x to get the constructor and arguments*)
-  let Hrep := (find_constr_rep gamma_valid m m_in srts srts_len _ a a_in (adts pdf m srts)
-    (gamma_all_unif gamma_valid _ m_in) x) in
+  let Hrep := (find_constr_rep gamma_valid pd pf m_in a_in srts_len x) in
   let c1 : funsym := projT1 Hrep in
   (*Now just get the index of c1 in the constr list*)
   let y := Z.of_nat (index funsym_eq_dec c1 (adt_constr_list a)) in
@@ -1813,38 +1805,11 @@ Definition funs_new_full := funs_new (list_to_aset (idents_of_context gamma)).
 (*The preds are the same*)
 Definition preds_new := preds gamma_valid pd pf.
 
-(*Prove [pd_full]*)
-Lemma pd_new_full:
-  pi_dom_full (new_gamma gamma) pd.
+Lemma funs_new_same_constrs (new_gamma_valid: valid_context (new_gamma gamma)):
+  ADTSpec.pf_same_constrs gamma_valid new_gamma_valid (funs gamma_valid pd pf) funs_new_full.
 Proof.
-  inversion pdf.
-  constructor.
-  intros m srts a m_in Hin. unfold new_gamma in m_in.
-  apply mut_in_ctx_new_gamma in m_in.
-  apply adts. exact m_in.
-Qed.
-
-
-(*Prove constrs*)
-
-(*NOTE: after typing can remove new_gamma_valid assumption*)
-Lemma funs_new_full_constr (new_gamma_valid: valid_context (new_gamma gamma)): 
-  forall (m: mut_adt) (a: alg_datatype)
-  (c: funsym) (m_in: mut_in_ctx m (new_gamma gamma)) (a_in: adt_in_mut a m)
-  (c_in: constr_in_adt c a) (srts: list sort)
-  (srts_len: length srts = length (m_params m))
-  (args: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)),
-  funs_new_full c srts args =
-  constr_rep_dom new_gamma_valid m m_in srts srts_len (dom_aux pd)
-    a a_in c c_in (adts pd_new_full m srts) args.
-Proof.
-  intros m a c m_in a_in c_in srts srts_len args.
-  unfold funs_new_full.
-  assert (m_in': mut_in_ctx m gamma). {
-    unfold new_gamma in m_in.
-    apply mut_in_ctx_new_gamma in m_in. 
-    auto.
-  }
+  unfold ADTSpec.pf_same_constrs. intros m a c srts m_in1 m_in2 a_in c_in srts_len args.
+  unfold ADTSpec.constr_rep, funs_new_full.
   rewrite funs_new_old_names.
   2: {
     simpl_set.
@@ -1856,26 +1821,28 @@ Proof.
       left. rewrite in_map_iff. exists c; split; auto.
       eapply constr_in_adt_def; eauto.
   }
-  rewrite (constrs gamma_valid pd pdf pf m a c m_in' a_in c_in _ srts_len).
-  (*Now have to change the context*)
-  unfold constr_rep_dom.
-  match goal with
-  | |- scast ?H1 ?x = scast ?H2 ?y =>
-    let Heq := fresh "Heq" in 
-    assert (Heq: x = y); [|rewrite Heq]
-  end.
-  2: {
-    apply scast_eq_uip.
-  }
-  apply constr_rep_change_gamma.
+  apply dom_cast_eq.
+Qed.
+
+(*Prove that [adt_interp_props] holds of the new interp.*)
+Lemma funs_new_adt_props (new_gamma_valid: valid_context (new_gamma gamma)) :
+  adt_interp_props new_gamma_valid (dom_aux pd) funs_new_full.
+Proof.
+  apply (pf_same_constrs_adt_props gamma_valid new_gamma_valid) with (pf1:=funs gamma_valid pd pf).
+  - intros m m_in.
+    unfold new_gamma in m_in.
+    apply mut_in_ctx_new_gamma in m_in. 
+    auto.
+  - apply funs_new_same_constrs.
+  - apply (adt_props gamma_valid pd pf).
 Qed.
 
 (*Now finally, we can define the [pi_funpred]*)
 
 Definition pf_new (new_gamma_valid: valid_context (new_gamma gamma)) : 
-  pi_funpred new_gamma_valid pd pd_new_full :=
-  Build_pi_funpred new_gamma_valid pd pd_new_full funs_new_full preds_new
-    (funs_new_full_constr new_gamma_valid).
+  pi_funpred new_gamma_valid pd :=
+  Build_pi_funpred new_gamma_valid pd funs_new_full preds_new
+    (funs_new_adt_props new_gamma_valid).
 
 End Funs.
 End NewInterp.

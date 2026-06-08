@@ -254,11 +254,10 @@ End BijMap.
 Section Alpha.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
- {pd: pi_dom} {pdf: pi_dom_full gamma pd}
-  {vt: val_typevar} {pf: pi_funpred gamma_valid pd pdf}.
+ {pd: pi_dom} {vt: val_typevar} {pf: pi_funpred gamma_valid pd}.
 
-Notation term_rep := (term_rep gamma_valid pd pdf vt pf).
-Notation formula_rep := (formula_rep gamma_valid pd pdf vt pf).
+Notation term_rep := (term_rep gamma_valid pd pf vt).
+Notation formula_rep := (formula_rep gamma_valid pd pf vt).
 
 (*NOTE: instead of integer tags, we compare variables, since we care only
   about equality and not order.
@@ -1143,8 +1142,8 @@ Lemma match_val_single_alpha_p {ty: vty}
     forall x y t,
     amap_lookup (fst res) x = Some y ->
     amap_lookup s1 x = Some t <-> amap_lookup s2 y = Some t)
-  (match_val_single gamma_valid pd pdf vt ty p1 Hty1 d)
-  (match_val_single gamma_valid pd pdf vt ty p2 Hty2 d).
+  (match_val_single gamma_valid pd pf vt ty p1 Hty1 d)
+  (match_val_single gamma_valid pd pf vt ty p2 Hty2 d).
 Proof.
   revert ty d Hty1 Hty2. generalize dependent res. generalize dependent m.
   generalize dependent p2. induction p1 as [v1 | f1 tys1 ps1 IH | | p1 q1 IH1 IH2 | p1 v1 IH].
@@ -1234,8 +1233,8 @@ Proof.
       assert (Hbij3: bij_map (fst res1) (snd res1)) by (eapply alpha_equiv_p_bij; eauto).
       specialize (H1 _ _ Hbij1 _ Hbij3 Halpha _ (hlist_hd (cast_arg_list e a0)) (Forall_inv f0) (Forall_inv f)).
       (*Now we can reason by cases*)
-      destruct (match_val_single gamma_valid pd pdf vt _ p1 _ _) as [a1|] eqn : Hmatch1;
-      destruct (match_val_single gamma_valid pd pdf vt _ p2 _ _) as [a2|] eqn : Hmatch2;
+      destruct (match_val_single gamma_valid pd pf vt _ p1 _ _) as [a1|] eqn : Hmatch1;
+      destruct (match_val_single gamma_valid pd pf vt _ p2 _ _) as [a2|] eqn : Hmatch2;
       simpl in H2; try contradiction; auto.
       (*Both Some, use IH*)
       rewrite Halpha in Hfold.
@@ -1342,8 +1341,8 @@ Corollary match_val_single_alpha_p_full {ty: vty} {p1 p2: pattern}
     forall x y t,
     amap_lookup (fst res) x = Some y ->
     amap_lookup s1 x = Some t <-> amap_lookup s2 y = Some t)
-  (match_val_single gamma_valid pd pdf vt ty p1 Hty1 d)
-  (match_val_single gamma_valid pd pdf vt ty p2 Hty2 d).
+  (match_val_single gamma_valid pd pf vt ty p1 Hty1 d)
+  (match_val_single gamma_valid pd pf vt ty p2 Hty2 d).
 Proof.
   apply match_val_single_alpha_p with (m:=(amap_empty, amap_empty)); auto.
   - apply bij_empty. 
@@ -8261,7 +8260,7 @@ Lemma safe_sub_ts_rep subs t
   (Hty2 : term_has_type gamma t ty):
   term_rep vv (safe_sub_ts subs t) ty Hty1 =
   term_rep (val_with_args pd vt vv (keylist subs)
-      (map_arg_list gamma_valid pd pdf vt pf vv 
+      (map_arg_list gamma_valid pd vt pf vv 
           (vals subs) (map snd (keylist subs)) 
           (map_snd_fst_len (elements subs)) Hall)) t ty Hty2.
 Proof.
@@ -8292,7 +8291,7 @@ Lemma safe_sub_fs_rep subs f
   (Hty2 : formula_typed gamma f):
   formula_rep vv (safe_sub_fs subs f) Hty1 =
   formula_rep (val_with_args pd vt vv (keylist subs)
-      (map_arg_list gamma_valid pd pdf vt pf vv 
+      (map_arg_list gamma_valid pd vt pf vv 
           (vals subs) (map snd (keylist subs)) 
           (map_snd_fst_len (elements subs)) Hall)) f Hty2.
 Proof.
@@ -8805,10 +8804,11 @@ Definition a_convert_gen {b: bool} (t: gen_term b) (vs: aset vsymbol) : gen_term
   | false => fun f => a_convert_f f vs
   end t.
 
-Lemma gen_rep_a_convert {b: bool} {gamma} (gamma_valid: valid_context gamma) pd pdf (pf: pi_funpred gamma_valid pd pdf) vt (vv: val_vars pd vt) (ty: gen_type b)
+Lemma gen_rep_a_convert {b: bool} {gamma} (gamma_valid: valid_context gamma) pd (pf: pi_funpred gamma_valid pd)
+  vt (vv: val_vars pd vt) (ty: gen_type b)
   (e: gen_term b) (vs: aset vsymbol) Hty1 Hty2:
-  gen_rep gamma_valid pd pdf pf vt vv ty (a_convert_gen e vs) Hty1 =
-  gen_rep gamma_valid pd pdf pf vt vv ty e Hty2.
+  gen_rep gamma_valid pd pf vt vv ty (a_convert_gen e vs) Hty1 =
+  gen_rep gamma_valid pd pf vt vv ty e Hty2.
 Proof.
   destruct b; simpl in *.
   - erewrite term_rep_irrel. erewrite <- a_convert_t_rep. reflexivity.
@@ -8934,11 +8934,10 @@ Qed. *)
 Section Rep.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
- {pd: pi_dom} {pdf: pi_dom_full gamma pd}
-  {vt: val_typevar} {pf: pi_funpred gamma_valid pd pdf}.
+ {pd: pi_dom} {vt: val_typevar} {pf: pi_funpred gamma_valid pd}.
 
-Notation term_rep := (term_rep gamma_valid pd pdf vt pf).
-Notation formula_rep := (formula_rep gamma_valid pd pdf vt pf).
+Notation term_rep := (term_rep gamma_valid pd pf vt).
+Notation formula_rep := (formula_rep gamma_valid pd pf vt).
 
 Lemma safe_sub_t_rep' (t1 t2: term) (x: string)
   (ty1 ty2: vty) (v: val_vars pd vt)

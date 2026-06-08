@@ -1604,20 +1604,6 @@ Qed.
 
 (*A similar result for [match_val_single]*)
 
-(*TODO: move*)
-Definition pf_same_constrs {g1 g2: context} {gamma_valid1: valid_context g1} {gamma_valid2: valid_context g2}
-  {pd : pi_dom} (pf1: pi_funpred gamma_valid1 pd) (pf2: pi_funpred gamma_valid2 pd) : Prop :=
-  ADTSpec.pf_same_constrs gamma_valid1 gamma_valid2 (funs gamma_valid1 pd pf1) (funs gamma_valid2 pd pf2).
-
-(*TODO: move*)
-Lemma pf_same_constrs_refl {g} {gamma_valid: valid_context g} {pd} (pf: pi_funpred gamma_valid pd):
-  pf_same_constrs pf pf.
-Proof.
-  unfold pf_same_constrs, ADTSpec.pf_same_constrs.
-  intros m a c srts m_in1 m_in2 a_in c_in srts_len args.
-  assert (m_in1 = m_in2) by (apply bool_irrelevance). subst. reflexivity.
-Qed.
-
 (*NOTE: might need lemma for ones without pat matching
   to remove [mut_of_context] assumption*)
 (*TODO: (remove this comment) - used for be Forall2. Here we have in iff,
@@ -1711,7 +1697,9 @@ Proof.
       ) as Hrep.
     prove_hyp Hrep.
     {
-      clear. unfold dom_cast. rewrite !scast_scast. apply scast_eq_uip.
+      clear. rewrite !dom_cast_refl. unfold ADTSpec.adt_rep. simpl in *.
+      generalize dependent (map (v_subst vt1) vs2).
+      intros; subst. simpl. assert (Heq = eq_refl) by (apply UIP_dec, sort_eq_dec). subst; reflexivity.
     }
     simpl in Hrep.
     case_find_constr.
@@ -1921,7 +1909,7 @@ Corollary match_val_single_irrel {gamma} (gamma_valid: valid_context gamma)
   match_val_single gamma_valid pd pf v ty p Hval2 d.
 Proof.
   apply match_val_single_change_gamma; auto.
-  apply pf_same_constrs_refl.
+  apply pf_same_constrs_refl; reflexivity.
 Qed.
 
 (*3: Change typevar but not gamma*)
@@ -1944,7 +1932,7 @@ Lemma match_val_single_change_vt {gamma: context}
     (match_val_single gamma_valid pd pf vt2 ty p Hval d).
 Proof.
   pose proof (match_val_single_ext gamma_valid gamma_valid 
-    eq_refl pd pf pf (pf_same_constrs_refl pf) vt1 vt2 ty Heq p Hval Hval d) as Hopt.
+    eq_refl pd pf pf (pf_same_constrs_refl pf pf eq_refl) vt1 vt2 ty Heq p Hval Hval d) as Hopt.
   revert Hopt.
   apply opt_related_impl.
   (*Easy implication*)
@@ -2179,8 +2167,7 @@ Proof.
 Qed.
 
 Corollary fmla_change_pf {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (p1 p2: pi_funpred gamma_valid pd)
+  (pd: pi_dom) (p1 p2: pi_funpred gamma_valid pd)
   (pf_eq: pf_same_constrs p1 p2)
   (vt: val_typevar) (v: val_vars pd vt) 
   (f: formula)
@@ -2210,7 +2197,7 @@ Corollary term_rep_irrel {gamma} (gamma_valid: valid_context gamma)
   term_rep gamma_valid pd pf vt vv t ty Hty1 =
   term_rep gamma_valid pd pf vt vv t ty Hty2.
 Proof.
-  apply term_change_gamma_pf; auto. apply pf_same_constrs_refl.
+  apply term_change_gamma_pf; auto. apply pf_same_constrs_refl; auto.
 Qed.
 
 Corollary fmla_rep_irrel {gamma} (gamma_valid: valid_context gamma)
@@ -2221,18 +2208,18 @@ Corollary fmla_rep_irrel {gamma} (gamma_valid: valid_context gamma)
   formula_rep gamma_valid pd pf vt vv f Hval1 = 
   formula_rep gamma_valid pd pf vt vv f Hval2.
 Proof.
-  apply fmla_change_gamma_pf; auto. apply pf_same_constrs_refl.
+  apply fmla_change_gamma_pf; auto. apply pf_same_constrs_refl; auto.
 Qed.
 
 (*Also useful, especially in pattern matching compilation*)
 Lemma match_rep_irrel {gamma} (gamma_valid: valid_context gamma) 
-  pd pdf pf vt v
+  pd pf vt v
    (b1: bool) (ty: gen_type b1) ty1 
   (d: domain (dom_aux pd) (v_subst vt ty1)) pats Hpats1 Hpats2 Hpats3 Hpats4 :
 
-  match_rep gamma_valid pd pdf vt v (term_rep gamma_valid pd pf vt) 
+  match_rep gamma_valid pd pf vt v (term_rep gamma_valid pd pf vt) 
     (formula_rep gamma_valid pd pf vt) b1 ty ty1 d pats Hpats1 Hpats2 =
-  match_rep gamma_valid pd pdf vt v (term_rep gamma_valid pd pf vt) 
+  match_rep gamma_valid pd pf vt v (term_rep gamma_valid pd pf vt) 
     (formula_rep gamma_valid pd pf vt) b1 ty ty1 d pats Hpats3 Hpats4.
 Proof.
   revert Hpats1 Hpats2 Hpats3 Hpats4. induction pats as [| p ptl IH]; simpl; auto.
@@ -2477,25 +2464,7 @@ Theorem tm_fmla_change_vt (t: term) (f: formula):
 Proof.
   revert t f. apply term_formula_ind; intros; simpl; simpl_rep_full.
   - destruct c; simpl; simpl_rep_full;
-    inversion Hty; subst; simpl in Heq. 
-    + unfold cast_dom_vty.
-      generalize dependent ((eq_sym (ty_constint_inv Hty))); intros.
-      assert (e = eq_refl). apply UIP_dec. apply vty_eq_dec.
-      subst. simpl. unfold dom_cast; simpl.
-      assert ((f_equal domain Heq) = eq_refl). {
-        (*NOTE: relies on UIP*)
-        apply UIP.
-      }
-      rewrite H. reflexivity.
-    + unfold cast_dom_vty. 
-      generalize dependent (eq_sym (ty_constreal_inv Hty)); intros.
-      assert (e = eq_refl). apply UIP_dec. apply vty_eq_dec.
-      subst. simpl. unfold dom_cast; simpl.
-      assert ((f_equal domain Heq) = eq_refl). {
-        (*NOTE: relies on UIP*)
-        apply UIP.
-      }
-      rewrite H. reflexivity.
+    inversion Hty; subst;  unfold cast_dom_vty;  rewrite !dom_cast_compose; apply dom_cast_eq.
   - (*Variable case - more casting*)
     unfold var_to_dom.
     inversion Hty; subst.

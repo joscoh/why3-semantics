@@ -212,10 +212,10 @@ Proof.
         intros; subst. reflexivity.
       - intros i t' t_in' Heq Hi. specialize (Hconstrs i t' t_in' Heq Hi).
         unfold P' in Hconstrs. simpl in Hconstrs. unfold transport_args.
-        rewrite hlist_map_hnth with (d2:=ADTSpec.dom_int _).
+        rewrite hlist_map_hnth with (d2:=dom_int_aux _).
         2: { unfold sym_sigma_args, ty_subst_list_s. simpl_len; auto. }
         generalize dependent Heq.
-        generalize dependent (hnth i a1 s_int (ADTSpec.dom_int (dom_aux pd1))).
+        generalize dependent (hnth i a1 s_int (dom_int_aux (dom_aux pd1))).
         generalize dependent (nth i (sym_sigma_args c srts) s_int).
         intros; subst. auto.
     }

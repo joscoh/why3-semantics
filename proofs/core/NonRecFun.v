@@ -6,8 +6,7 @@ Set Bullet Behavior "Strict Subproofs".
 
 Section NonRecFun.
 
-Context {gamma: context} (gamma_valid: valid_context gamma)
-{pd: pi_dom} {pdf: pi_dom_full gamma pd}.
+Context {gamma: context} (gamma_valid: valid_context gamma) {pd: pi_dom}.
 
 Lemma nonrec_body_ty {f args body}:
   In (nonrec_def (fun_def f args body)) gamma ->
@@ -57,7 +56,7 @@ Qed.
 
 (*This time, we define the rep directly using [term_rep]*)
 Definition nonrec_fun_rep
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pf: pi_funpred gamma_valid pd)
   (f: funsym) (args: list vsymbol) (body: term)
   (f_in: In (nonrec_def (fun_def f args body)) gamma)
   (srts: list sort)
@@ -67,9 +66,9 @@ Definition nonrec_fun_rep
   (*We need a cast because we change [val_typevar]*)
   dom_cast _ (funs_cast gamma_valid _ (nonrec_in_funsyms f_in) srts_len) (
   (*The function is the same as evaluating the body*)
-  term_rep gamma_valid pd pdf
+  term_rep gamma_valid pd pf (*just use pf this time*)
   (*Setting the function params to srts*)
-  (vt_with_args triv_val_typevar (s_params f) srts) pf (*just use pf this time*)
+  (vt_with_args triv_val_typevar (s_params f) srts)
   (*And setting the function arguments to a*)
   (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
     (s_params_Nodup _) pd triv_val_typevar (triv_val_vars _ _)) args a)
@@ -78,7 +77,7 @@ Definition nonrec_fun_rep
 
 (*And the spec (just allows us to change vt and vv)*)
 Lemma nonrec_fun_rep_spec
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pf: pi_funpred gamma_valid pd)
   (f: funsym) (args: list vsymbol) (body: term)
   (f_in: In (nonrec_def (fun_def f args body)) gamma)
   (srts: list sort)
@@ -87,8 +86,8 @@ Lemma nonrec_fun_rep_spec
   (vt: val_typevar) (vv: val_vars pd vt):
   nonrec_fun_rep pf f args body f_in srts srts_len a =
   dom_cast _ (funs_cast gamma_valid vt (nonrec_in_funsyms f_in) srts_len) (
-    term_rep gamma_valid pd pdf
-      (vt_with_args vt (s_params f) srts) pf
+    term_rep gamma_valid pd pf
+      (vt_with_args vt (s_params f) srts) 
       (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
         (s_params_Nodup _) pd vt vv) args a)
       body (f_ret f) (nonrec_body_ty f_in)).
@@ -156,16 +155,16 @@ Qed.
 
 (*Preds are a bit simpler*)
 Definition nonrec_pred_rep
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pf: pi_funpred gamma_valid pd)
   (p: predsym) (args: list vsymbol) (body: formula)
   (p_in: In (nonrec_def (pred_def p args body)) gamma)
   (srts: list sort)
   (srts_len: length srts = length (s_params p))
   (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)): bool :=
   (*The function is the same as evaluating the body*)
-  formula_rep gamma_valid pd pdf
+  formula_rep gamma_valid pd pf (*just use pf this time*)
   (*Setting the function params to srts*)
-  (vt_with_args triv_val_typevar (s_params p) srts) pf (*just use pf this time*)
+  (vt_with_args triv_val_typevar (s_params p) srts)
   (*And setting the function arguments to a*)
   (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
     (s_params_Nodup _) pd triv_val_typevar (triv_val_vars _ _)) args a)
@@ -174,7 +173,7 @@ Definition nonrec_pred_rep
 
 (*And the spec (just allows us to change vt and vv)*)
 Lemma nonrec_pred_rep_spec
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pf: pi_funpred gamma_valid pd)
   (p: predsym) (args: list vsymbol) (body: formula)
   (p_in: In (nonrec_def (pred_def p args body)) gamma)
   (srts: list sort)
@@ -182,8 +181,8 @@ Lemma nonrec_pred_rep_spec
   (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
   (vt: val_typevar) (vv: val_vars pd vt):
   nonrec_pred_rep pf p args body p_in srts srts_len a =
-  formula_rep gamma_valid pd pdf
-    (vt_with_args vt (s_params p) srts) pf
+  formula_rep gamma_valid pd pf
+    (vt_with_args vt (s_params p) srts)
     (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
       (s_params_Nodup _) pd vt vv) args a)
     body (nonrec_body_typed p_in).
@@ -240,7 +239,7 @@ Qed.
 Section UpdatePF.
 
 (*Update function in function case*)
-Definition pf_with_nonrec_fun (pf: pi_funpred gamma_valid pd pdf)
+Definition pf_with_nonrec_fun (pf: pi_funpred gamma_valid pd)
   (f: funsym) (args: list vsymbol) (body: term)
   (f_in: In (nonrec_def (fun_def f args body)) gamma):
   forall (f1: funsym) (srts: list sort)
@@ -262,7 +261,7 @@ Definition pf_with_nonrec_fun (pf: pi_funpred gamma_valid pd pdf)
 
 (*Casting goes away with these lemmas*)
 
-Lemma pf_with_nonrec_fun_diff (pf: pi_funpred gamma_valid pd pdf)
+Lemma pf_with_nonrec_fun_diff (pf: pi_funpred gamma_valid pd)
 (f: funsym) (args: list vsymbol) (body: term)
 (f_in: In (nonrec_def (fun_def f args body)) gamma)
 (f1: funsym) (srts: list sort)
@@ -276,7 +275,7 @@ Proof.
   destruct (funsym_eq_dec f1 f); subst; auto. contradiction.
 Qed.
 
-Lemma pf_with_nonrec_fun_same (pf: pi_funpred gamma_valid pd pdf)
+Lemma pf_with_nonrec_fun_same (pf: pi_funpred gamma_valid pd)
 (f: funsym) (args: list vsymbol) (body: term)
 (f_in: In (nonrec_def (fun_def f args body)) gamma)
 (srts: list sort)
@@ -296,7 +295,7 @@ Proof.
 Qed.
 
 (*Update predicate in predicate case*)
-Definition pf_with_nonrec_pred (pf: pi_funpred gamma_valid pd pdf)
+Definition pf_with_nonrec_pred (pf: pi_funpred gamma_valid pd)
   (p: predsym) (args: list vsymbol) (body: formula)
   (p_in: In (nonrec_def (pred_def p args body)) gamma):
   forall (p1: predsym) (srts: list sort)
@@ -314,7 +313,7 @@ Definition pf_with_nonrec_pred (pf: pi_funpred gamma_valid pd pdf)
   end.
 
 (*And the lemmas*)
-Lemma pf_with_nonrec_pred_diff (pf: pi_funpred gamma_valid pd pdf)
+Lemma pf_with_nonrec_pred_diff (pf: pi_funpred gamma_valid pd)
 (p: predsym) (args: list vsymbol) (body: formula)
 (p_in: In (nonrec_def (pred_def p args body)) gamma)
 (p1: predsym) (srts: list sort)
@@ -328,7 +327,7 @@ Proof.
   destruct (predsym_eq_dec p1 p); subst; auto. contradiction.
 Qed.
 
-Lemma pf_with_nonrec_pred_same (pf: pi_funpred gamma_valid pd pdf)
+Lemma pf_with_nonrec_pred_same (pf: pi_funpred gamma_valid pd)
 (p: predsym) (args: list vsymbol) (body: formula)
 (p_in: In (nonrec_def (pred_def p args body)) gamma)
 (srts: list sort)
@@ -348,7 +347,7 @@ Proof.
 Qed.
 
 (*Overall case: funs, preds, constrs*)
-Definition pf_with_nonrec_funs (pf: pi_funpred gamma_valid pd pdf)
+Definition pf_with_nonrec_funs (pf: pi_funpred gamma_valid pd)
   (fd: funpred_def) (f_in: In (nonrec_def fd) gamma):
   forall (f1: funsym) (srts: list sort)
   (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f1 srts)),
@@ -362,7 +361,7 @@ Definition pf_with_nonrec_funs (pf: pi_funpred gamma_valid pd pdf)
   | _ => fun p_in => funs gamma_valid pd pf f1 srts a
   end f_in.
 
-Definition pf_with_nonrec_preds (pf: pi_funpred gamma_valid pd pdf)
+Definition pf_with_nonrec_preds (pf: pi_funpred gamma_valid pd)
   (fd: funpred_def) (f_in: In (nonrec_def fd) gamma):
   forall (p1: predsym) (srts: list sort)
   (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p1 srts)),
@@ -376,38 +375,30 @@ Definition pf_with_nonrec_preds (pf: pi_funpred gamma_valid pd pdf)
   end f_in.
 
 (*Constrs lemma*)
-Lemma pf_with_nonrec_constrs (pf: pi_funpred gamma_valid pd pdf)
+Lemma pf_with_nonrec_constrs (pf: pi_funpred gamma_valid pd)
   (fd: funpred_def) (f_in: In (nonrec_def fd) gamma):
-  forall (m : mut_adt) (a : alg_datatype) 
-    (c : funsym) (Hm : mut_in_ctx m gamma) 
-    (Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
-    (srts : list sort)
-    (Hlens : Datatypes.length srts =
-              Datatypes.length (m_params m))
-    (args : arg_list (domain (dom_aux pd))
-              (sym_sigma_args c srts)),
-  (pf_with_nonrec_funs pf fd f_in) c srts args =
-  constr_rep_dom gamma_valid m Hm srts Hlens 
-    (dom_aux pd) a Ha c Hc (Interp.adts pdf m srts) args.
+  ADTSpec.pf_same_constrs gamma_valid gamma_valid (funs gamma_valid pd pf) (pf_with_nonrec_funs pf fd f_in).
 Proof.
-  intros. unfold pf_with_nonrec_funs.
-  destruct fd; simpl; [| destruct pf; apply constrs].
+  intros m a c srts m_in1 m_in2 a_in c_in srts_len args.
+  assert (m_in1 = m_in2) by (apply bool_irrelevance); subst.
+  unfold ADTSpec.constr_rep, pf_with_nonrec_funs.
+  destruct fd; simpl; [| reflexivity].
   unfold pf_with_nonrec_fun.
-  destruct (funsym_eq_dec c f); subst;
-  [| destruct pf; apply constrs].
-  destruct (Nat.eq_dec (length srts) (length (s_params f)));
-  [| destruct pf; apply constrs].
+  destruct (funsym_eq_dec c f); subst; [| reflexivity].
+  destruct (Nat.eq_dec (length srts) (length (s_params f))); [| reflexivity].
   (*Here, we need a contradiction*)
   exfalso.
   apply (constr_not_nonrecfun gamma_valid (fun_def f l t) f a m); simpl; auto.
 Qed.
 
 (*Now we can give the whole definition*)
-Definition pf_with_nonrec (pf: pi_funpred gamma_valid pd pdf)
+Definition pf_with_nonrec (pf: pi_funpred gamma_valid pd)
 (fd: funpred_def) (f_in: In (nonrec_def fd) gamma):
-pi_funpred gamma_valid pd pdf :=
-Build_pi_funpred gamma_valid pd pdf (pf_with_nonrec_funs pf fd f_in)
-  (pf_with_nonrec_preds pf fd f_in) (pf_with_nonrec_constrs pf fd f_in).
+  pi_funpred gamma_valid pd :=
+   mk_pf_from_existing gamma_valid pd pf
+     (pf_with_nonrec_funs pf fd f_in)
+     (pf_with_nonrec_preds pf fd f_in)
+     (pf_with_nonrec_constrs pf fd f_in).
 
 End UpdatePF.
 

@@ -101,6 +101,12 @@ Proof.
   intros Hx2; subst. simpl. reflexivity.
 Qed.
 
+Lemma dom_cast_eq_iff (s1 s2: sort) (Heq1 Heq2: s1 = s2) (x y: domain s1):
+  dom_cast Heq1 x = dom_cast Heq2 y <-> x = y.
+Proof.
+  subst. assert (Heq2 = eq_refl) by (apply UIP_dec, sort_eq_dec). subst. reflexivity.
+Qed.
+
 End DomCast.
 
 (*Define casting arg_lists*)

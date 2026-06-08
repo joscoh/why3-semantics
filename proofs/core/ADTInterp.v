@@ -808,12 +808,12 @@ Proof.
   destruct (Nat.eqb_spec (length srts) (length (m_params m))) as [srts_len | Hlen].
   2: { eapply Hpd2; eauto. }
   constructor.
-  assert (Heq: domain pd (s_cons (adt_name a) srts) = adt_rep m srts pd a a_in).
+  assert (Heq: domain pd (s_cons (adt_name a) srts) = IndTypes.adt_rep m srts pd a a_in).
   { rewrite <- pd_full; auto. }
   rewrite Heq.
   (*Idea: we use the corresponding [constr_rep] (since we assumed [full]). What remains is
     to construct the [adt_rep], which we do inductively*)
-  apply (constr_rep gamma_valid m m_in srts srts_len pd a a_in c c_in).
+  apply (IndTypes.constr_rep gamma_valid m m_in srts srts_len pd a a_in c c_in).
   { intros a' m_in' a_in' Hlen'. apply pd_full; auto. }
   unfold sym_sigma_args.
 
@@ -864,7 +864,7 @@ Theorem all_adts_inhab {gamma} (gamma_valid: valid_context gamma) (pd: sort -> S
   srts (Hsrts: ForallT (fun s : sort => domain_nonempty (domain pd) s) srts)
   {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (srts_len: length srts = length (m_params m)):
-  adt_rep m srts pd a a_in.
+  IndTypes.adt_rep m srts pd a a_in.
 Proof. 
   assert (Htsinhab: typesym_inhab gamma (adt_name a)). {
     apply valid_context_defs in gamma_valid.
@@ -892,7 +892,7 @@ Theorem mk_pdf_adts_inhab {gamma} (gamma_valid: valid_context gamma) (pd: sort -
   srts (Hsrts: ForallT (fun s : sort => domain_nonempty (domain (mk_pd gamma pd)) s) srts)
   {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (srts_len: length srts = length (m_params m)):
-  adt_rep m srts (mk_pd gamma pd) a a_in.
+  IndTypes.adt_rep m srts (mk_pd gamma pd) a a_in.
 Proof. 
   assert (Hpd1': forall ts srts (Hts: find_ts_in_ctx gamma ts = None), 
     domain_nonempty (domain (mk_pd gamma pd)) (s_cons ts srts)).

@@ -45,7 +45,7 @@ Definition constr_rep {gamma: context} (gamma_valid: valid_context gamma)
       (pf c srts args).
 
 (*Useful for defaults*)
-Definition dom_int (pd: sort -> Set) : domain pd s_int := 0%Z.
+Definition dom_int_aux (pd: sort -> Set) : domain pd s_int := 0%Z.
 Record adt_interp_props {gamma: context} (gamma_valid: valid_context gamma) 
   (pd: sort -> Set) (pf: fun_interp pd) :=
   {
@@ -89,7 +89,7 @@ Record adt_interp_props {gamma: context} (gamma_valid: valid_context gamma)
           s_cons (adt_name t') srts), 
         i < length (s_args c) ->
       (*If nth i a has type adt_rep ..., then P holds of it*)
-      P t' t_in' (dom_cast _ Heq (hnth i a s_int (dom_int _)))
+      P t' t_in' (dom_cast _ Heq (hnth i a s_int (dom_int_aux _)))
       ) ->
     P t t_in x
     ),
@@ -103,15 +103,25 @@ Definition pf_same_constrs {g1 g2: context} (gamma_valid1: valid_context g1) (ga
     constr_rep gamma_valid1 pd pf1 m_in1 a_in c_in srts_len args =
       constr_rep gamma_valid2 pd pf2 m_in2 a_in c_in srts_len args.
 
-(*TODO: move*)
-(*We need a transparent version*)
-Definition f_equal2 {A1 A2 B: Type} (f: A1 -> A2 -> B) {x1 y1: A1} {x2 y2: A2} (Heq1: x1 = y1) (Heq2: x2 = y2):
-  f x1 x2 = f y1 y2.
+Lemma pf_same_constrs_refl_aux {g1 g2: context} (g1_valid: valid_context g1)
+  (g2_valid: valid_context g2) {pd: sort -> Set} (pf: fun_interp pd) :
+  pf_same_constrs g1_valid g2_valid pf pf.
 Proof.
-  f_equal.
-  - exact Heq1.
-  - exact Heq2.
-Defined.
+  unfold ADTSpec.pf_same_constrs. intros.
+  unfold ADTSpec.constr_rep. apply dom_cast_eq.
+Qed.
+
+Lemma pf_same_constrs_sym {g1 g2} (g1_valid: valid_context g1) (g2_valid: valid_context g2)
+  {pd} (pf1: fun_interp pd) (pf2: fun_interp pd):
+  pf_same_constrs g1_valid g2_valid pf1 pf2 ->
+  pf_same_constrs g2_valid g1_valid pf2 pf1.
+Proof.
+  unfold pf_same_constrs. auto.
+Qed.
+
+Definition pf_same_constrs_refl {g: context} (gamma_valid: valid_context g) {pd: sort -> Set} (pf: fun_interp pd) :
+  pf_same_constrs gamma_valid gamma_valid pf pf :=
+  pf_same_constrs_refl_aux gamma_valid gamma_valid pf.
 
 (*Any two instances of [adt_interp_props] for the same pd have the same [find_constr_rep]*)
 Lemma find_constr_rep_equiv  {g1 g2: context} (gamma_valid1: valid_context g1) (gamma_valid2: valid_context g2) 
@@ -150,4 +160,27 @@ Proof.
   - subst. assert (c1_in = c2_in) by (apply bool_irrelevance). subst.
     apply inj2 in Hx2. subst. exists eq_refl. reflexivity.
   - apply disj2 in Hx2; auto. contradiction.
+Qed.
+
+(*Any two [fun_interp] that satisfy [pf_same_constrs] satisfy [adt_interp_props] equally*)
+Lemma pf_same_constrs_adt_props {g1 g2: context} (gamma_valid1: valid_context g1) (gamma_valid2: valid_context g2)
+  (g_muts: forall m, mut_in_ctx m g2 -> mut_in_ctx m g1)
+  {pd: sort -> Set} {pf1 pf2: fun_interp pd} (pf_eq: pf_same_constrs gamma_valid1 gamma_valid2 pf1 pf2)
+  (a: adt_interp_props gamma_valid1 pd pf1):
+  adt_interp_props gamma_valid2 pd pf2.
+Proof.
+  destruct a as [inj disj inv ind]. unfold pf_same_constrs in pf_eq.
+  constructor.
+  - clear -inj pf_eq g_muts. intros m a c m_in a_in c_in srts srts_len a1 a2.
+    rewrite <-! pf_eq with (m_in1:=g_muts m m_in). apply inj.
+  - clear -disj pf_eq g_muts. intros m a f1 f2 m_in a_in f1_in f2_in srts srts_len a1 a2.
+    rewrite <-! pf_eq with (m_in1:=g_muts m m_in). apply disj.
+  - clear -inv pf_eq g_muts. intros m a m_in a_in srts srts_len x.
+    specialize (inv m a (g_muts m m_in) a_in srts srts_len x).
+    destruct inv as [f [[f_in a1] Hx]].
+    apply (existT f). apply (exist _ (f_in, a1)).
+    subst. apply pf_eq.
+  - clear -ind pf_eq g_muts. intros m m_in srts srts_len P IH. apply (ind m (g_muts m m_in) srts srts_len P).
+    intros t t_in x c c_in a Hx Hconstrs. apply (IH t t_in x c c_in a); auto.
+    subst. apply pf_eq.
 Qed.
