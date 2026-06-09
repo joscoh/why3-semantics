@@ -699,7 +699,7 @@ End InterpProofs.
 
 (*Part 3: Prove resulting domain is inhabited (TODO: maybe change dependencies*)
 
-Require Import Interp.
+Require Import Interp2.
 
 (*Need for Type proofs (NOTE: opaque)*)
 Lemma existsb_exists_strong {A: Type} (f: A -> bool) (l: list A):

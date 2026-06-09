@@ -388,8 +388,7 @@ Proof.
         unfold remove_binding in *.
         generalize dependent (nth j (map snd (keylist (remove_bindings subs (aset_singleton v)))) vty_int).
         generalize dependent (nth j (vals (remove_bindings subs (aset_singleton v))) tm_d). 
-        intros; subst. (*Remove cast*) assert (e = eq_refl) by (apply UIP_dec, sort_eq_dec). subst e.
-        unfold dom_cast; simpl.
+        intros; subst. rewrite dom_cast_refl.
         (*And finally, just prove [term_rep] equivalent*)
         erewrite term_rep_irrel.
         apply tm_change_vv.
@@ -512,8 +511,7 @@ Proof.
         end.
         generalize dependent (nth j (map snd (keylist (remove_bindings subs (pat_fv phd)))) vty_int).
         generalize dependent (nth j (vals (remove_bindings subs (pat_fv phd))) tm_d).
-        intros; subst. simpl. assert (e = eq_refl) by (apply UIP_dec, sort_eq_dec); subst e. 
-        unfold dom_cast; simpl.
+        intros; subst. rewrite dom_cast_refl.
         (*And finally, just prove [term_rep] equivalent*)
         erewrite term_rep_irrel.
         apply tm_change_vv.
@@ -632,8 +630,7 @@ Proof.
         unfold remove_binding in *.
         generalize dependent (nth j (map snd (keylist (remove_bindings subs (aset_singleton v)))) vty_int).
         generalize dependent (nth j (vals (remove_bindings subs (aset_singleton v))) tm_d). 
-        intros; subst. (*Remove cast*) assert (e = eq_refl) by (apply UIP_dec, sort_eq_dec). subst e.
-        unfold dom_cast; simpl.
+        intros; subst. rewrite dom_cast_refl. 
         (*And finally, just prove [term_rep] equivalent*)
         erewrite term_rep_irrel.
         apply tm_change_vv.
@@ -750,8 +747,7 @@ Proof.
           unfold remove_binding in *.
           generalize dependent (nth j (map snd (keylist (remove_bindings subs (aset_singleton v)))) vty_int).
           generalize dependent (nth j (vals (remove_bindings subs (aset_singleton v))) tm_d). 
-          intros; subst. (*Remove cast*) assert (e = eq_refl) by (apply UIP_dec, sort_eq_dec). subst e.
-          unfold dom_cast; simpl.
+          intros; subst. rewrite dom_cast_refl.
           (*And finally, just prove [term_rep] equivalent*)
           erewrite term_rep_irrel.
           apply tm_change_vv.
@@ -879,8 +875,7 @@ Proof.
         unfold remove_binding in *.
         generalize dependent (nth j (map snd (keylist (remove_bindings subs (aset_singleton v)))) vty_int).
         generalize dependent (nth j (vals (remove_bindings subs (aset_singleton v))) tm_d). 
-        intros; subst. (*Remove cast*) assert (e = eq_refl) by (apply UIP_dec, sort_eq_dec). subst e.
-        unfold dom_cast; simpl.
+        intros; subst. rewrite dom_cast_refl. 
         (*And finally, just prove [term_rep] equivalent*)
         erewrite term_rep_irrel.
         apply tm_change_vv.
@@ -1002,8 +997,7 @@ Proof.
         end.
         generalize dependent (nth j (map snd (keylist (remove_bindings subs (pat_fv phd)))) vty_int).
         generalize dependent (nth j (vals (remove_bindings subs (pat_fv phd))) tm_d).
-        intros; subst. simpl. assert (e = eq_refl) by (apply UIP_dec, sort_eq_dec); subst e. 
-        unfold dom_cast; simpl.
+        intros; subst. rewrite dom_cast_refl. 
         (*And finally, just prove [term_rep] equivalent*)
         erewrite term_rep_irrel.
         apply tm_change_vv.
@@ -1207,8 +1201,7 @@ Proof.
     destruct (vty_eq_dec _ _); unfold substi. 
     + vsym_eq (x, ty1) x0.
       * vsym_eq (x, ty1) (x, ty1).
-        gen_dom_cast. intros Heq; assert (Heq = eq_refl) by (apply UIP_dec, sort_eq_dec); subst Heq.
-        unfold dom_cast; simpl. assert (eq_sym e0 = eq_refl) by (apply UIP_dec, vsymbol_eq_dec).
+        rewrite dom_cast_refl. assert (eq_sym e0 = eq_refl) by (apply UIP_dec, vsymbol_eq_dec).
         rewrite H1.
         apply term_rep_irrel.
       * vsym_eq x0 (x, ty1).
@@ -1254,8 +1247,7 @@ Proof.
     destruct (vty_eq_dec _ _); unfold substi. 
     + vsym_eq (x, ty1) x0.
       * vsym_eq (x, ty1) (x, ty1).
-        gen_dom_cast. intros Heq; assert (Heq = eq_refl) by (apply UIP_dec, sort_eq_dec); subst Heq.
-        unfold dom_cast; simpl. assert (eq_sym e0 = eq_refl) by (apply UIP_dec, vsymbol_eq_dec).
+        rewrite dom_cast_refl.  assert (eq_sym e0 = eq_refl) by (apply UIP_dec, vsymbol_eq_dec).
         rewrite H1.
         apply term_rep_irrel.
       * vsym_eq x0 (x, ty1).

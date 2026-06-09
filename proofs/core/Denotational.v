@@ -33,6 +33,14 @@ Proof.
   inversion H.
 Qed.
 
+(*Some results depend on proof irrelevance, which
+  follows anyway from LEM*)
+Lemma proof_irrel: forall (P: Prop) (H1 H2: P), H1 = H2.
+Proof.
+  apply ClassicalFacts.proof_irrelevance_cci;
+  apply Classical_Prop.classic.
+Qed.
+
  (*A computable version - why is standard version not computable?*)
  Definition proj1' {A B: Prop} (H: A /\ B) : A :=
   match H with
@@ -1811,13 +1819,13 @@ Proof.
         -- intros Hy12; inversion Hy12; subst; clear Hy12. eauto.
         -- intros [y4 [Heq4 [Hy24 Hproj24]]]; subst.
           destruct y1; destruct y2; destruct y2'; destruct y2''; destruct y4; simpl in *; subst.
-          unfold dom_cast in Hy24; simpl in Hy24. auto. 
+          rewrite dom_cast_refl in Hy24. auto. 
       * destruct Hget1' as [y2' [Heq' [Hy2' Hproj2']]]. setoid_rewrite Hy2'.
         split.
         -- intros Hy12; inversion Hy12; subst; clear Hy12. eauto.
         -- intros [y4 [Heq4 [Hy24 Hproj24]]]; subst.
           destruct y1; destruct y2; destruct y2'; destruct y4; simpl in *; subst.
-          unfold dom_cast in Hy24; simpl in Hy24. auto. 
+          rewrite dom_cast_refl in Hy24. auto. 
       * (*Mirror of previous*)
         destruct Hget3' as [y2'' [Heq'' [Hy2'' Hproj2'']]].
         assert (Hl2: amap_lookup l2 x1 = None) by (rewrite <- Hnone; eauto).
@@ -1827,7 +1835,7 @@ Proof.
         -- intros Hy12; inversion Hy12; subst; clear Hy12. eauto.
         -- intros [y4 [Heq4 [Hy24 Hproj24]]]; subst.
           destruct y2''; destruct y2; destruct y3; destruct y4; simpl in *; subst.
-          unfold dom_cast in Hy24; simpl in Hy24. auto.
+          rewrite dom_cast_refl in Hy24; auto.
       * assert (Hl2: amap_lookup l2 x1 = None) by (rewrite <- (Hnone l1 l2); eauto).
         assert (Hl4: amap_lookup l4 x1 = None) by (rewrite <- (Hnone l3 l4); eauto).
         setoid_rewrite Hl2. setoid_rewrite Hl4. split; intros; intros; destruct_all; discriminate.
@@ -1891,8 +1899,7 @@ Proof.
   apply amap_ext.
   intros x. destruct (amap_lookup l1 x) as [y1|] eqn : Hget.
   - symmetry. apply Hrel in Hget. destruct Hget as [y2 [Heq [Hget2 Hproj2]]].
-    destruct y1; destruct y2; simpl in *; subst. unfold dom_cast in Hget2. simpl in Hget2.
-    assumption.
+    destruct y1; destruct y2; simpl in *; subst. rewrite dom_cast_refl in Hget2. auto.
   - destruct (amap_lookup l2 x) as [y2|] eqn : Hget1; auto.
     assert (Hlookup: amap_lookup l1 x = Some y2).
     { apply Hrel. exists y2. exists eq_refl. auto. }
@@ -2321,7 +2328,7 @@ Lemma funs_cast_eq f {s1 s2: list sort} (Heq: s1 = s2)
   (funs f s1 a) =
   funs f s2 (cast_arg_list (f_equal (sym_sigma_args f) Heq) a).
 Proof.
-  subst. unfold dom_cast, cast_arg_list. simpl. reflexivity.
+  subst; reflexivity.
 Qed.
 
 Lemma preds_cast_eq p {s1 s2: list sort} (Heq: s1 = s2)
@@ -2632,8 +2639,7 @@ Proof.
     end = dom_cast (dom_aux pd) (eq_sym Heq) (match domain_ne pd (v_subst vt1 ty) with
     | @DE _ _ x => x
     end)). {
-      generalize dependent (v_subst vt2 ty); intros; subst.
-      unfold dom_cast; reflexivity.
+      generalize dependent (v_subst vt2 ty); intros; subst. rewrite dom_cast_refl; reflexivity.
     }
     generalize dependent (match domain_ne pd (v_subst vt2 ty) with
     | @DE _ _ x => x
@@ -2663,9 +2669,7 @@ Proof.
     }
     clear H0.
     (*Now, we can generalize*)
-    generalize dependent (v_subst vt2 ty); intros; subst; 
-    unfold dom_cast; simpl.
-    reflexivity.
+    generalize dependent (v_subst vt2 ty); intros; subst; rewrite dom_cast_refl; reflexivity.
   - (*Preds case*)
     assert (Hmap: map (v_subst vt2) tys = map (v_subst vt1) tys). {
       apply list_eq_ext'; rewrite !length_map; auto.

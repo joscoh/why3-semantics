@@ -740,6 +740,33 @@ Proof.
   contradiction.
 Qed. 
 
+Lemma ty_subst_fun_params_id: forall params d v,
+  In v params ->
+  ty_subst_fun params (List.map vty_var params) d v = vty_var v.
+Proof.
+  intros p d v Hinv. unfold ty_subst_fun. 
+  destruct (get_assoc_list _ _ _) eqn : Hassoc.
+  2: { apply get_assoc_list_none in Hassoc.
+    rewrite map_fst_combine in Hassoc; [contradiction | solve_len].
+  }
+  apply get_assoc_list_some in Hassoc.
+  rewrite -> in_combine_iff in Hassoc by solve_len.
+  destruct Hassoc as [i [Hi Hx]]. specialize (Hx ""%string vty_int).
+  inversion Hx; subst. rewrite -> map_nth_inbound with (d2:=""%string); auto.
+Qed.
+
+Lemma ty_subst_params_id: forall params x,
+  (forall v, aset_mem v (type_vars x) -> In v params) ->
+  ty_subst params (List.map vty_var params) x = x.
+Proof.
+  intros. unfold ty_subst. induction x; simpl; auto.
+  apply ty_subst_fun_params_id. apply H. simpl. simpl_set. auto.
+  f_equal. apply map_id'.
+  revert H0. rewrite !Forall_forall; intros.
+  apply H0; auto. intros. apply H. simpl. simpl_set; auto.
+  exists x. split; auto.
+Qed.
+
 End TySubstLemmas.
 
 (*A version of [ty_subst] that only changes the mapped

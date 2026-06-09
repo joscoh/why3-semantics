@@ -1,17 +1,9 @@
 (*Recursive Functions*)
-Require Import ADTInd.
+Require Export RecFunLemmas.
 Require Import Typechecker.
 Require Export Denotational.
 
 Set Bullet Behavior "Strict Subproofs".
-
-(*Some results depend on proof irrelevance, which
-  follows anyway from LEM*)
-Lemma proof_irrel: forall (P: Prop) (H1 H2: P), H1 = H2.
-Proof.
-  apply ClassicalFacts.proof_irrelevance_cci;
-  apply Classical_Prop.classic.
-Qed.
 
 Section FunDef.
 
@@ -212,7 +204,7 @@ Proof.
   constructor.
   intros y Hsmall.
   remember (dom_cast (dom_aux pd) Heq x) as x2. inversion Hsmall. subst.
-  simpl in *. unfold dom_cast in adt1, adt2. simpl in adt1, adt2.
+  simpl in *.
   destruct H as [i [Heqith [Hi Hadt1]]].
   (*Need to prove lots of equalities before applying the IH. First,
     a2's name and srts*)
@@ -230,11 +222,11 @@ Proof.
   subst t.
   clear H.
   (*Now we need to deal with adt1 and adt2*)
-  subst adt1. rewrite rewrite_dom_cast in Hadt1. symmetry in Hadt1.
+  subst adt1. rewrite !dom_cast_refl in Hadt1. symmetry in Hadt1.
   apply dom_cast_switch in Hadt1. rewrite dom_cast_compose in Hadt1.
   destruct y as [ty2 d2]. simpl in *. subst. simpl.
   (*From adt2, get info about c*)
-  subst adt2. rewrite rewrite_dom_cast, dom_cast_refl in Hadt2.
+  subst adt2. rewrite !dom_cast_refl in Hadt2.
   assert (m_in = m_in0) by apply bool_irrelevance.
   subst m_in0.
   assert (Hlen = lengths_eq). {
@@ -686,8 +678,7 @@ Proof.
               hide_ty
                 (dom_cast (dom_aux pd) (Hithcast 0 (Nat.lt_0_succ (Datatypes.length l0)))
                   (hlist_hd a0))). {
-                erewrite hlist_hd_cast.
-                unfold dom_cast. reflexivity.
+                erewrite hlist_hd_cast. rewrite rewrite_dom_cast. reflexivity.
               }
               destruct H3; subst; auto.
               ** (*these are the same*)
@@ -1638,33 +1629,6 @@ Proof.
   rewrite params_eq; auto. apply map_vars_srts; auto.
 Qed.
 
-Lemma ty_subst_fun_params_id: forall params d v,
-  In v params ->
-  ty_subst_fun params (map vty_var params) d v = vty_var v.
-Proof.
-  intros p d v Hinv. unfold ty_subst_fun. 
-  destruct (get_assoc_list _ _ _) eqn : Hassoc.
-  2: { apply get_assoc_list_none in Hassoc.
-    rewrite map_fst_combine in Hassoc; [contradiction | solve_len].
-  }
-  apply get_assoc_list_some in Hassoc.
-  rewrite in_combine_iff in Hassoc by solve_len.
-  destruct Hassoc as [i [Hi Hx]]. specialize (Hx ""%string vty_int).
-  inversion Hx; subst. rewrite map_nth_inbound with (d2:=""%string); auto.
-Qed.
-
-Lemma ty_subst_params_id: forall params x,
-  (forall v, aset_mem v (type_vars x) -> In v params) ->
-  ty_subst params (map vty_var params) x = x.
-Proof.
-  intros. unfold ty_subst. induction x; simpl; auto.
-  apply ty_subst_fun_params_id. apply H. simpl. simpl_set. auto.
-  f_equal. apply map_id'.
-  revert H0. rewrite !Forall_forall; intros.
-  apply H0; auto. intros. apply H. simpl. simpl_set; auto.
-  exists x. split; auto.
-Qed.
-
 (*The type doesn't actually matter for [adt_smaller]; only
   the value. Thus, we can cast and still have the relation hold*)
 Lemma adt_smaller_hide_cast {s1 s2: sort} (x: domain s1) 
@@ -1674,8 +1638,8 @@ Lemma adt_smaller_hide_cast {s1 s2: sort} (x: domain s1)
 Proof.
   intros. unfold hide_ty in *. destruct y as [ty_y dy].
   rename x into dx. inversion H. subst x1 x2.
-  simpl in *. subst s0. subst s3. simpl in *.
-  unfold dom_cast in Hx1_2, Hx2_2. simpl in Hx1_2, Hx2_2. subst d1 d2.
+  simpl in *. subst s0. subst s3.
+  rewrite dom_cast_refl in Hx1_2, Hx2_2. subst d1 d2.
   eapply (ADT_small _ _ _ s2 ty_y (dom_cast (dom_aux pd) Heq dx) 
     dy m0 a1 a2 srts c args _ _ _ _ (eq_trans (eq_sym Heq) Hty1) 
     Hty2 a_in1 a_in2 m_in0 c_in lengths_eq).
@@ -2172,16 +2136,15 @@ Proof.
     (*First, we do some things that will simplify the casting*)
     destruct x as [x1' x2']; simpl in *; subst.
     destruct y' as [y1 y2]. simpl in *; subst.
-    assert (e = eq_refl). { apply UIP_dec. apply sort_eq_dec. }
-    subst. unfold dom_cast. simpl.
-    (*replace (hide_ty y2) with (existT ) by (destruct y'; reflexivity).*)
+    rewrite dom_cast_refl.
+     (*replace (hide_ty y2) with (existT ) by (destruct y'; reflexivity).*)
     inversion Hty1; subst.
     revert Hlookup.
     match goal with 
       | |- adt_smaller_trans ?pf ?y (hide_ty (dom_cast ?d ?E ?x)) -> ?P =>
         assert (E = eq_refl) by (apply UIP_dec; apply sort_eq_dec)
         end.
-    rewrite H1; clear H1. unfold dom_cast; simpl.
+    rewrite H1; clear H1. rewrite dom_cast_refl.
     unfold var_to_dom. intros.
     (*Now the goals are much clearer, we consider each case*)
     (*Now consider each case*)
@@ -2217,32 +2180,6 @@ Proof.
   rewrite extend_val_notin; auto; [apply H0; auto|].
   eapply match_val_single_fv in H. rewrite <- H, <- amap_mem_keys in H2.
   destruct (amap_mem x l); auto. exfalso; auto.
-Qed.
-
-Lemma upd_option_some (hd: option vsymbol) (x: vsymbol):
-  forall h,
-    upd_option hd x = Some h <-> hd = Some h /\ h <> x.
-Proof.
-  intros. unfold upd_option. destruct hd; [|split; intros; destruct_all; discriminate].
-  destruct (vsymbol_eq_dec x v); subst.
-  - split; intros; try discriminate.
-    destruct H. inversion H; subst; contradiction.
-  - split; intros; destruct_all; inversion H; subst; auto.
-Qed.
-
-Lemma upd_option_iter_some (hd: option vsymbol) (l: aset vsymbol):
-  forall h,
-    upd_option_iter hd l = Some h <-> hd = Some h /\ ~ aset_mem h l.
-Proof.
-  intros. unfold upd_option_iter.
-  apply aset_fold_ind with (P:=fun b s => b = Some h <-> hd = Some h /\ ~ aset_mem h s).
-  - split.
-    + intros Hhd; subst; split; auto. apply aset_mem_empty.
-    + intros [Hhd _]; subst; auto.
-  - intros x s b Hnotin IH.
-    rewrite upd_option_some, IH, and_assoc.
-    simpl_set. rewrite demorgan_or. apply and_iff_compat_l.
-    apply and_comm.
 Qed.
 
 (*hd invariant with upd_option and upd_option_iter*)
@@ -2439,7 +2376,7 @@ Proof.
     simpl in Hall |- *. exists (Forall_inv Hall). simpl in Hiter.
     revert Hiter. case_match_hyp; try discriminate.
     intros Hlists; inversion Hlists; subst; clear Hlists.
-    exists a0. exists eq_refl. unfold dom_cast; simpl. 
+    exists a0. exists eq_refl. rewrite dom_cast_refl. 
     split; auto.
     erewrite <- match_val_single_fv in Hx; eauto.
     apply extend_val_with_list_union1; assumption.
@@ -2494,7 +2431,7 @@ Proof.
     specialize (Hsmall x Hinx).
     destruct Hsmall as [Hinm Hsmall]; split; auto.
     erewrite hide_ty_eq with (Hs:=eq_refl). apply Hsmall.
-    unfold dom_cast; simpl. symmetry.
+    rewrite dom_cast_refl. symmetry.
     apply extend_val_notin. 
     erewrite <- match_val_single_fv in Hnotfv by eauto.
     rewrite <- amap_mem_keys in Hnotfv. destruct (amap_mem x l); auto; exfalso; auto.
@@ -4231,8 +4168,7 @@ Proof.
       end.
       (*Now we use our funs assumption*)
       destruct s as [f' [Hinf' Hf1]]; subst.
-      simpl.
-      unfold dom_cast. simpl. rewrite !rewrite_dom_cast.
+      simpl. rewrite dom_cast_refl.
       destruct input as [fa [v' [srts_len' vt_eq_srts']]].
       simpl in *.
       destruct fa; simpl in *; subst.

@@ -1102,7 +1102,7 @@ Lemma match_val_single_change_ty pd pf vt (ty1 ty2: vty)
   match_val_single gamma_valid pd pf vt ty1 p Hp1 d =
   match_val_single gamma_valid pd pf vt ty2 p Hp2 (dom_cast (dom_aux pd) (f_equal (v_subst vt) Heq) d).
 Proof.
-  subst. simpl. unfold dom_cast. simpl. apply match_val_single_irrel.
+  subst. simpl. rewrite dom_cast_refl. apply match_val_single_irrel.
 Qed.
 
 (*First:if we cast d, it does not change whether the
@@ -1387,20 +1387,7 @@ Proof.
   unfold tm_wf_strong_rec, fmla_wf_strong_rec.
   revert t f. apply term_formula_ind; simpl; intros; simpl_rep_full; auto.
   - destruct c; inversion Hty1; inversion Hty2; subst; simpl_rep_full;
-    unfold cast_dom_vty.
-    + generalize dependent ((Logic.eq_sym (ty_constint_inv Hty1))); intros.
-      assert (e = Logic.eq_refl). apply UIP_dec. apply vty_eq_dec.
-      subst. simpl. unfold dom_cast; simpl.
-      generalize dependent (Logic.eq_sym (ty_constint_inv Hty2)); intros.
-      assert (e = Logic.eq_refl). apply UIP_dec. apply vty_eq_dec.
-      subst. simpl.
-      rewrite -> rewrite_dom_cast, dom_cast_refl; reflexivity.
-    + generalize dependent ((Logic.eq_sym (ty_constreal_inv Hty1))); intros.
-      assert (e = Logic.eq_refl). apply UIP_dec. apply vty_eq_dec.
-      subst. simpl. unfold dom_cast; simpl.
-      generalize dependent (Logic.eq_sym (ty_constreal_inv Hty2)); intros.
-      assert (e = Logic.eq_refl). apply UIP_dec. apply vty_eq_dec.
-      subst. simpl. rewrite -> rewrite_dom_cast, dom_cast_refl. reflexivity.
+    unfold cast_dom_vty; rewrite !dom_cast_refl; reflexivity.
   - (*Variable case - more casting*)
     unfold var_to_dom.
     inversion Hty1; inversion Hty2; subst.
@@ -1553,7 +1540,7 @@ Proof.
     {
       (*Trivial case*)
       generalize dependent (v_subst vt ty2).
-      intros. subst. unfold dom_cast; simpl. reflexivity.
+      intros. subst. rewrite dom_cast_refl. reflexivity.
     }
     destruct a.
     inversion H0; subst.
@@ -1636,8 +1623,7 @@ Proof.
     (match domain_ne pd (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty1) with
     | @DE _ _ x => x
     end)). {
-      generalize dependent (v_subst vt ty2); intros; subst.
-      unfold dom_cast; reflexivity.
+      generalize dependent (v_subst vt ty2); intros; subst. rewrite dom_cast_refl. reflexivity.
     }
     generalize dependent (match domain_ne pd (v_subst vt ty2) with
     | @DE _ _ x => x
@@ -1676,8 +1662,7 @@ Proof.
     clear H0.
     (*Now, we can generalize*)
     generalize dependent (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty1); intros; subst; 
-    unfold dom_cast; simpl.
-    reflexivity.
+    rewrite dom_cast_refl; reflexivity.
   - (*Fpred*)
     assert (Hmap: (map (v_subst vt) (ty_subst_list' params tys tys0)) =
     (map (v_subst (vt_with_args vt params (map (v_subst vt) tys))) tys0)). {

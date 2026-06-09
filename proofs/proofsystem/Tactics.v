@@ -5,6 +5,7 @@ Require Export NatDed.
 Require Export Theory.
 Require Export Unfold.
 Require Import CommonSSR.
+Require Export Interp.
 From mathcomp Require Export all_boot.
 Set Bullet Behavior "Strict Subproofs".
 

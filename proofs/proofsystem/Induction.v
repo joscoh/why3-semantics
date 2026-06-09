@@ -16,7 +16,6 @@ Require Import Denotational2.
 Require Import GenElts.
 Require Import Alpha.
 Require Import Task.
-Require Import ADTInd.
 Set Bullet Behavior "Strict Subproofs".
 
 

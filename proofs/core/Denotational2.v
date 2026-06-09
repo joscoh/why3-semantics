@@ -115,13 +115,8 @@ Proof.
     simpl.
     simp terms_to_hlist.
     rewrite cast_arg_list_cons.
-    erewrite IH. f_equal. unfold dom_cast.
-    repeat match goal with
-    | |- context [scast (f_equal _ ?Heq)] => generalize dependent Heq 
-    end.
-    intros Heq1 Heq2. assert (Heq1 = Heq2). { apply UIP_dec, sort_eq_dec. }
-    subst.
-    erewrite term_rep_irrel. reflexivity.
+    erewrite IH. f_equal. rewrite rewrite_dom_cast. apply dom_cast_eq'.
+    apply term_rep_irrel.
 Qed.
 
 Lemma fun_arg_list_eq (f: funsym) (ty: vty) (tys: list vty) (tms: list term) 
@@ -929,3 +924,11 @@ Qed.
 End Implies.
 
 End Iter.
+
+Lemma bool_of_binop_impl: forall b1 b2,
+  bool_of_binop Timplies b1 b2 = all_dec (b1 -> b2).
+Proof.
+  intros. destruct b1; destruct b2; simpl;
+  match goal with |- context[ all_dec ?P ] => destruct (all_dec P); auto end;
+  exfalso; apply n; auto.
+Qed.

@@ -973,9 +973,8 @@ Proof.
           inversion Hp2; subst. inversion H2; subst. reflexivity.
         }
         subst. destruct (sort_eq_dec (v_subst vt (snd v0))
-          (v_subst vt (snd v0))); try contradiction.
-        assert (e = eq_refl). apply UIP_dec. apply sort_eq_dec. subst.
-        simpl. unfold dom_cast; simpl.
+                           (v_subst vt (snd v0))); try contradiction.
+        rewrite dom_cast_refl.
         rewrite term_rep_irrel with (Hty2:=(Forall2_inv_head Htmty)).
         apply tm_change_vv.
         intros v1 Hinv1.
@@ -1149,8 +1148,7 @@ Proof.
             inversion Hp2; subst. inversion H2; subst. reflexivity.
           }
           subst. destruct (sort_eq_dec _ _); [| contradiction].
-          assert (e = eq_refl). apply UIP_dec. apply sort_eq_dec. subst.
-          simpl. unfold dom_cast; simpl.
+          rewrite dom_cast_refl. 
           rewrite term_rep_irrel with (Hty2:=(Forall2_inv_head Htmty)).
           apply tm_change_vv.
           intros v1 Hinv1.

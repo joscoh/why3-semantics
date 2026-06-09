@@ -98,7 +98,7 @@ Record adt_interp_props {gamma: context} (gamma_valid: valid_context gamma)
 
 Definition pf_same_constrs {g1 g2: context} (gamma_valid1: valid_context g1) (gamma_valid2: valid_context g2)
   {pd : sort -> Set} (pf1 pf2: fun_interp pd) : Prop :=
-  forall {m a c srts} (m_in1: mut_in_ctx m g1) (m_in2: mut_in_ctx m g2) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+  forall m a c srts (m_in1: mut_in_ctx m g1) (m_in2: mut_in_ctx m g2) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
     (srts_len: length srts = length (m_params m)) (args: arg_list (domain pd) (sym_sigma_args c srts)),
     constr_rep gamma_valid1 pd pf1 m_in1 a_in c_in srts_len args =
       constr_rep gamma_valid2 pd pf2 m_in2 a_in c_in srts_len args.

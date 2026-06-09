@@ -1,4 +1,4 @@
-Require Export amap ADTSpec IndTypes.
+Require Export amap ADTSpec.
 Require Export Stdlib.Logic.FunctionalExtensionality.
 Set Bullet Behavior "Strict Subproofs".
 
@@ -30,27 +30,8 @@ Record pi_dom : Type :=
   domain_ne: forall s, domain_nonempty (domain dom_aux) s;
   }.
 
-(*Collecting this assumption is useful for constructing satisfying interps
- (see ADTFullProps.v for the proof that [pi_dom_full] satisfies
- the ADT spec in [pi_funpred] below and ADTInterp.v for the explicit
- construction of such an interp.*)
-
-Record pi_dom_full (pd: pi_dom) := {
-  
-
-  (*ADTs: they are the corresponding W type created by [mk_adts],
-    with the typesym and typevar map coming from sorts on which
-    the type is applied*)
-
-    adts: forall (m: mut_adt) (srts: list sort)
-    (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m)
-    (Hlen: length srts = length (m_params m)),
-    (domain (dom_aux pd)) (s_cons (adt_name a) srts) =
-    IndTypes.adt_rep m srts (dom_aux pd) a Hin;
-
-}.
 End PD.
-(*Arguments adts {_} {_}.*)
+
 Context {gamma: context} (gamma_valid: valid_context gamma).
 Record pi_funpred (pd: pi_dom) := {
   (*Functions and predicates take in a heterogenous list such that
@@ -65,16 +46,6 @@ Record pi_funpred (pd: pi_dom) := {
 
   (*The interpretation must satisfy the ADT properties*)
   adt_props: adt_interp_props gamma_valid (dom_aux pd) funs
-
-  (*The interpretation for each constructor comes from [constr_rep]
-    with an additional cast for the domains*)
-  (*constrs: forall (m: mut_adt) (a: alg_datatype) (c: funsym)
-    (Hm: mut_in_ctx m gamma) (Ha: adt_in_mut a m) (Hc: constr_in_adt c a)
-    (srts: list sort) (Hlens: length srts = length (m_params m))
-    (args: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)),
-    funs c srts args =
-    constr_rep_dom gamma_valid m Hm srts Hlens (dom_aux pd) a Ha
-      c Hc (adts pdf m srts) args*)
 
   }.
 
@@ -94,7 +65,6 @@ Definition val_vars (pd: pi_dom) (vt: val_typevar) : Type :=
 Section ValUtil.
 
 Variable pd: pi_dom.
-(* Variable pdf : pi_dom_full gamma pd. *)
 Variable vt: val_typevar.
 
 Notation domain := (domain (dom_aux pd)).
@@ -434,6 +404,17 @@ Proof.
   destruct (typevar_eq_dec x a); subst; auto; contradiction.
 Qed.
 
+Lemma vt_with_args_cast vt params srts ty:
+  (forall x, aset_mem x (type_vars ty) -> In x params) ->
+  NoDup params ->
+  length srts = length params ->
+  v_subst (vt_with_args vt params srts) ty =
+  ty_subst_s params srts ty.
+Proof.
+  intros. apply v_ty_subst_eq; auto.
+  intros. apply vt_with_args_nth; auto.
+Qed.
+
 Lemma map_vars_srts vt params srts: 
 length srts = length params ->
 vt_eq vt params srts ->
@@ -766,10 +747,6 @@ Definition mk_pf_from_existing {gamma} (gamma_valid: valid_context gamma)
   pi_funpred gamma_valid pd :=
   mk_pf_from_existing_aux gamma_valid gamma_valid (ltac:(auto)) pd pf funs2 preds2 constrs.
 
-(*Arguments adts {_} {_}.*)
-(* Arguments funs {_} _ _ {_}. *)
-(* Arguments preds {_} _ _ {_}. *)
-
 (*Change interp if gamma changes (but muts are the same)*)
 Lemma change_gamma_constrs {gamma1 gamma2}
   (gamma1_valid: valid_context gamma1) (gamma2_valid: valid_context gamma2)
@@ -799,24 +776,3 @@ Definition change_gamma_pf {gamma1 gamma2}
   mk_pf_from_existing_aux gamma1_valid gamma2_valid (mut_in_ctx_eq_ctx Hm)
     pd pf (funs gamma1_valid pd pf) (preds gamma1_valid pd pf)
   (change_gamma_constrs gamma1_valid gamma2_valid Hm pd pf).
-
-(*Lemma change_gamma_adts {gamma1 gamma2} 
-  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
-  (pd: pi_dom)
-  (*(pdf: pi_dom_full gamma1 pd)*):
-  (forall m srts a (m_in: mut_in_ctx m gamma2)
-    (a_in: adt_in_mut a m) (srts_len: length srts = length (m_params m)),
-    domain (dom_aux pd) (s_cons (adt_name a) srts) = adt_rep m srts (dom_aux pd) a a_in).
-Proof.
-  intros m srts a m_in a_in.
-  apply pdf. unfold mut_in_ctx.
-  exact (eq_trans (f_equal (fun p => in_bool mut_adt_dec m p) Hm) m_in).
-Defined.*)
-
-(*TODO: should we put [dom_nonempty] in pd so that we don't need lemma?*)
-(*Definition change_gamma_dom_full {gamma1 gamma2} 
-  (Hm: mut_of_context gamma1 = mut_of_context gamma2)
-  (pd: pi_dom)
-  (*(pdf: pi_dom_full gamma1 pd)*):
-  pi_dom_full gamma2 pd :=
-  Build_pi_dom_full gamma2 pd (change_gamma_adts Hm pd pdf).*)

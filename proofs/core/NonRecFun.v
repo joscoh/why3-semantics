@@ -8,52 +8,6 @@ Section NonRecFun.
 
 Context {gamma: context} (gamma_valid: valid_context gamma) {pd: pi_dom}.
 
-Lemma nonrec_body_ty {f args body}:
-  In (nonrec_def (fun_def f args body)) gamma ->
-  term_has_type gamma body (f_ret f).
-Proof. 
-  intros.
-  apply valid_context_defs in gamma_valid.
-  rename gamma_valid into Hval.
-  rewrite Forall_forall in Hval.
-  specialize (Hval _ H). simpl in Hval.
-  destruct_all; auto.
-Qed.
-
-Lemma nonrec_in_funsyms {f args body}:
-  In (nonrec_def (fun_def f args body)) gamma ->
-  In f (funsyms_of_context gamma).
-Proof.
-  intros.
-  unfold funsyms_of_context. rewrite in_concat.
-  exists (funsyms_of_nonrec (fun_def f args body)).
-  split; simpl; auto.
-  rewrite in_map_iff. exists (nonrec_def (fun_def f args body)); auto.
-Qed.
-
-Lemma nonrec_body_typed {p args body}:
-  In (nonrec_def (pred_def p args body)) gamma ->
-  formula_typed gamma body.
-Proof. 
-  intros.
-  apply valid_context_defs in gamma_valid.
-  rename gamma_valid into Hval.
-  rewrite Forall_forall in Hval.
-  specialize (Hval _ H). simpl in Hval.
-  destruct_all; auto.
-Qed.
-
-Lemma nonrec_in_predsyms {p args body}:
-  In (nonrec_def (pred_def p args body)) gamma ->
-  In p (predsyms_of_context gamma).
-Proof.
-  intros.
-  unfold predsyms_of_context. rewrite in_concat.
-  exists (predsyms_of_nonrec (pred_def p args body)).
-  split; simpl; auto.
-  rewrite in_map_iff. exists (nonrec_def (pred_def p args body)); auto.
-Qed.
-
 (*This time, we define the rep directly using [term_rep]*)
 Definition nonrec_fun_rep
   (pf: pi_funpred gamma_valid pd)
@@ -73,7 +27,7 @@ Definition nonrec_fun_rep
   (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
     (s_params_Nodup _) pd triv_val_typevar (triv_val_vars _ _)) args a)
   (*Evaluating the function body*)
-  body (f_ret f) (nonrec_body_ty f_in)).
+  body (f_ret f) (nonrec_body_ty gamma_valid f_in)).
 
 (*And the spec (just allows us to change vt and vv)*)
 Lemma nonrec_fun_rep_spec
@@ -90,7 +44,7 @@ Lemma nonrec_fun_rep_spec
       (vt_with_args vt (s_params f) srts) 
       (val_with_args _ _ (upd_vv_args_srts (s_params f) srts (eq_sym srts_len)
         (s_params_Nodup _) pd vt vv) args a)
-      body (f_ret f) (nonrec_body_ty f_in)).
+      body (f_ret f) (nonrec_body_ty gamma_valid f_in)).
 Proof.
   unfold nonrec_fun_rep.
   assert (Heq: v_subst (vt_with_args vt (s_params f) srts) (f_ret f) =
@@ -169,7 +123,7 @@ Definition nonrec_pred_rep
   (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
     (s_params_Nodup _) pd triv_val_typevar (triv_val_vars _ _)) args a)
   (*Evaluating the function body*)
-  body (nonrec_body_typed p_in).
+  body (nonrec_body_typed gamma_valid p_in).
 
 (*And the spec (just allows us to change vt and vv)*)
 Lemma nonrec_pred_rep_spec
@@ -185,7 +139,7 @@ Lemma nonrec_pred_rep_spec
     (vt_with_args vt (s_params p) srts)
     (val_with_args _ _ (upd_vv_args_srts (s_params p) srts (eq_sym srts_len)
       (s_params_Nodup _) pd vt vv) args a)
-    body (nonrec_body_typed p_in).
+    body (nonrec_body_typed gamma_valid p_in).
 Proof.
   unfold nonrec_pred_rep.
   (*Get info about formula from typing*)

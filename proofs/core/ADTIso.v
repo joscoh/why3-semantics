@@ -175,8 +175,7 @@ Proof.
     generalize dependent (funs c1 srts).
     generalize dependent (funsym_sigma_ret c1 srts).
     generalize dependent (funsym_sigma_ret c2 srts).
-    intros; subst. assert (Heq: e = eq_refl) by (apply UIP_dec, sort_eq_dec). subst.
-    simpl. unfold dom_cast; simpl.
+    intros; subst. rewrite !dom_cast_refl.
     apply inv1.
   - clear constrs_inj constrs_disj adt_ind.
     intros m a m_in a_in srts srts_len x.

@@ -1,4 +1,5 @@
 (*Axiomatizes inductive predicates*)
+Require Import IndProp. (*TODO: could remove if we factor out more proofs, maybe not worth it*)
 Require Import Task.
 Require Import Alpha.
 Set Bullet Behavior "Strict Subproofs".
