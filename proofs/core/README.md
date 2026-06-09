@@ -2,8 +2,8 @@
 
 The semantics is organized into 2 categories: foundational pieces for
 syntax and semantics and the construction of model for well-typed context.
-The repo is set up so that nothing depends on the model construction
-(this also makes builds more parallel).
+The repo is set up so that nothing in the first category depends on the
+model construction (enabling parallel builds).
 
 ### Basic Syntax and Semantics
 

@@ -1,10 +1,5 @@
-(*Constructing a complete interpretation - maybe call this semantics?*)
-(*
-Require Export RecFun2.
-Require Export NonRecFun.
-Require Export IndProp.
-Require Export ADTInterp.
-Require Export ADTFullProps.*)
+(*Semantics for a complete interpretation*)
+
 Require Export RecFunLemmas.
 Require Export IndPropLemmas.
 Require Export Interp.

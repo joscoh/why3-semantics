@@ -850,9 +850,6 @@ Proof.
   apply Htys. auto.
 Qed.
 
-(*TODO: remove inhab lemmas from Typing*)
-
-
 (*Corollary: for any full interp in a well-typed context, if non-ADTs are inhabited and 
   ADTs applied to the wrong number of arguments are inhabited, then
   all ADTs are inhabited*)

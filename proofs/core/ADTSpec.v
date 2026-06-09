@@ -2,30 +2,11 @@
   1. Constructor interps are injective
   2. Constructor interps are disjoint (across types)
   3. An inversion principle holds
-  4. A generalized induction principle holds
+  4. A generalized induction principle holds*)
   
-Plan:
-X 1. Define these properties generally
-2. Refactor existing proofs to use these properties instead of fixing to W-types
-  NOTE: I think this will require the isomorphism already to give us the changing-context theorems
-  TODO: let's start with the isomorphism
-X 3. Prove that W-types satisfy these properties (probably need construction)
-  NOTE: might involve following
-x  a. define construction
-x  b. prove it satisfies fixed point property
-x  c. prove we can construct pre-interp
-x  d. modify full interp proofs
-4. Prove that any two interps satisfying these conditions are isomorphic (need similar construction)
-5. Prove that (via isomorphism) any two interps that differ only on ADTs preserve denotation
-6. Prove that we can give a fixed interp to prove validity
-7. Turn this into a Rocq-based proof system
-
-Goal: sound reasoning about Why3 proof terms via shallowly embedded Rocq terms
-  *)
-Require Export Hlist Typing Domain. (*TODO: remove*)
+Require Export Hlist Typing Domain.
 
 Set Bullet Behavior "Strict Subproofs".
-
 
 
 Definition fun_interp (pd: sort -> Set) := forall (f:funsym) (srts: list sort)

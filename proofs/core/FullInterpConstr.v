@@ -1,4 +1,4 @@
-(*Constructing a complete interpretation - maybe call this semantics?*)
+(*Constructing a complete interpretation*)
 
 Require Import RecFun2.
 Require Import NonRecFun.

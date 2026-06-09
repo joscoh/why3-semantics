@@ -350,7 +350,7 @@ Proof.
   rewrite (hlist_inv h1). simp hlist_app. reflexivity.
 Qed.
 
-(*[map*)
+(*[map]*)
 Equations hlist_map {A: Type} (f1 f2: A -> Type) (g: forall a, f1 a -> f2 a) (l: list A) (h1: hlist f1 l) : hlist f2 l :=
   hlist_map f1 f2 g nil (HL_nil _) := HL_nil _;
   hlist_map f1 f2 g (x :: l1) (HL_cons _ a1 htl) := HL_cons _ _ _ (g x a1) (hlist_map f1 f2 g l1 htl).
