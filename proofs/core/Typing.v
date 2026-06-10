@@ -326,7 +326,7 @@ Definition valid_mut_rec (m: mut_adt) : Prop :=
   2. The type must be inhabited (there must be 1 constructor with
     only inhabited types)
   3. Instances of the type must appear in strictly positive positions 
-  We additionally require that all ADTs are uniform and non-nested
+  We additionally require that all ADTs are uniform
   *)
 
 (*Types*)
@@ -497,9 +497,276 @@ Qed.
 
 End InhabRewrite.
 
+(*Now we prove correctness*)
+Section InhabCorrect.
+
+(*What it means for a type to be inhabited:
+  there is a closed term of that type*)
+Definition type_inhab (ty: vty) : Prop :=
+  exists (t: term), closed_term t /\ term_has_type gamma t ty.
+
+(*NOTE; we assume that all type variables are inhabited - 
+  otherwise we cannot define (for example), the Either type*)
+
+(*First, prove vty_inhab_fun correct, assuming the IH for
+  typesym_inhab_fun. Note that we do NOT prove the natural
+  condition (vty_inhab_fun ty -> type_inhab ty),
+  but rather we prove that under any substitution mapping
+  type variables to inhabited types, (v_subst_aux f ty)
+  is inhabited. We need such a general result to prove the
+  type substitution for the constructor params in
+  [typesym_inhab_fun_aux]. Since v_subst_aux is defined
+  recursively on the structure of types, it is not too
+  hard to prove the more general result here.*)
+Lemma vty_inhab_fun_aux (v: vty)
+  (Habs: forall ts vs,
+    In ts (sig_t gamma) ->
+    find_ts_in_ctx gamma ts = None ->
+    length vs = length (ts_args ts) ->
+    Forall (valid_type gamma) vs ->
+    Forall type_inhab vs ->
+    type_inhab (vty_cons ts vs)):
+  valid_type gamma v ->
+  forall n seen,
+    (*NoDup seen ->
+    n >= length (sig_t gamma) - length seen ->
+    sublist seen (sig_t gamma) ->*)
+    (forall (ts: typesym) (m: mut_adt) (a: alg_datatype),
+    typesym_inhab_fun seen ts n ->
+    find_ts_in_ctx gamma ts = Some (m, a) ->
+    exists c : funsym,
+      constr_in_adt c a /\
+      (forall vs : list vty,
+       Datatypes.length vs = Datatypes.length (ts_args ts) ->
+       Forall type_inhab vs ->
+       Forall (valid_type gamma) vs ->
+       exists tms : list term,
+         Forall (fun t : term => closed_term t) tms /\
+         term_has_type gamma (Tfun c vs tms) (vty_cons ts vs))) ->
+    forall f,
+    (forall x, type_inhab (f x)) ->
+    (forall x, valid_type gamma (f x)) ->
+    vty_inhab_fun seen v n ->
+    type_inhab (v_subst_aux f v).
+Proof.
+  intros. induction v; simpl in *; auto.
+  - exists (Tconst (ConstInt 0)). split; auto. constructor.
+  - exists (Tconst (ConstReal (QArith_base.Qmake 0 xH))). split.
+    reflexivity. constructor.
+  - bool_hyps.
+    rewrite forallb_forall in H3.
+    inversion H; subst.
+    destruct (find_ts_in_ctx gamma tsym) as [p |] eqn : Hts.
+    2 : { apply Habs; auto. rewrite length_map; auto.
+      rewrite Forall_map, Forall_forall. intros.
+      apply valid_type_subst; auto. 
+      rewrite Forall_map. revert H4. rewrite !Forall_forall; intros.
+      apply H4; auto.
+    }
+    destruct p as [m a]. 
+    specialize (H0 tsym m a H5 Hts).
+    destruct H0 as [c [c_in Hallvs]].
+    specialize (Hallvs (map (v_subst_aux f) vs)).
+    prove_hyp Hallvs.
+    { rewrite length_map; auto. }
+    prove_hyp Hallvs.
+    { rewrite Forall_map. revert H4.
+      rewrite !Forall_forall; intros. apply H4; auto. }
+    prove_hyp Hallvs.
+    { rewrite Forall_map. rewrite Forall_forall; intros.
+      apply valid_type_subst. auto. apply H2. }
+    destruct Hallvs as [tms [Hclosed Hterm]].
+    exists (Tfun c (map (v_subst_aux f) vs) tms).
+    split; auto. unfold closed_term in *. simpl.
+    rewrite aset_big_union_empty.
+    apply forallb_forall. rewrite Forall_forall in Hclosed. auto.
+Qed.
+
+(*Now we prove that [typesym_inhab_fun] shows that ADTs
+  are inhabited. We need a very strong lemma: we can find
+  a constructor such that for any list vs of inhabited types,
+  we can find a list of tms such that (Tfun c vs tms)
+  has type (vty_cons ts vs). We need this stronger result,
+  instead of just (type_inhab (vty_cons ts vs)), to deal with
+  the substitution in the [vty_inhab_fun] lemma above*)
+Theorem inhab_fun_inhab_aux (ts: typesym)
+  (*We need to know that all adts have correct params and
+    return types*)
+  (Hadtval: forall m a,
+    mut_in_ctx m gamma ->
+    adt_in_mut a m -> adt_valid_type a)
+  (*And that all argument types are valid*)
+  (Hconstrargs: forall m a c x,
+    mut_in_ctx m gamma -> adt_in_mut a m ->
+    constr_in_adt c a -> In x (f_ret c :: (s_args c)) ->
+    valid_type gamma x)
+  (Habs: forall ts vs,
+    In ts (sig_t gamma) ->
+    find_ts_in_ctx gamma ts = None ->
+    length vs = length (ts_args ts) ->
+    Forall (valid_type gamma) vs ->
+    Forall type_inhab vs ->
+    type_inhab (vty_cons ts vs)):
+  forall n seen,
+    typesym_inhab_fun seen ts n ->
+    forall m a,
+    find_ts_in_ctx gamma ts = Some (m, a) ->
+    exists (c: funsym),
+      constr_in_adt c a /\
+      forall vs,
+        length vs = length (ts_args ts) ->
+        Forall type_inhab vs ->
+        Forall (valid_type gamma) vs ->
+        exists tms,
+          Forall closed_term tms /\
+          term_has_type gamma (Tfun c vs tms) (vty_cons ts vs).
+Proof.
+  intros n.
+  revert ts.
+  induction n; intros.
+  - inversion H.
+  - rewrite typesym_inhab_fun_eq in H.
+    bool_hyps.
+    repeat simpl_sumbool.
+    destruct (find_ts_in_ctx gamma ts) as [p|] eqn : Hts; [|discriminate].
+    inversion H0; subst. clear H0.
+    bool_hyps.
+    apply existsb_exists in H0.
+    destruct H0 as [c [c_in Hcinhab]].
+    exists c.
+    split.
+    { unfold constr_in_adt. rewrite in_bool_ne_equiv.
+      apply In_in_bool. apply c_in.
+    }
+    unfold constr_inhab_fun in Hcinhab.
+    rewrite forallb_forall in Hcinhab.
+    assert (c_in': constr_in_adt c a). {
+      unfold constr_in_adt. rewrite in_bool_ne_equiv.
+      apply In_in_bool; auto.
+    }
+    intros vs Hvs Hvsinhab Hvsval.
+    (*Now, we use our previous lemma to build up the terms list*)
+    assert (exists tms: list term,
+      Forall closed_term tms /\
+      length tms = length (s_args c) /\
+      forall i, i < length tms ->
+        term_has_type gamma (nth i tms tm_d)
+          (ty_subst (s_params c) vs (nth i (s_args c) vty_int))). {
+      assert (Hval: forall x, In x (s_args c) -> valid_type gamma x). {
+        intros. apply find_ts_in_ctx_some in Hts.
+        destruct_all. apply (Hconstrargs m a c); simpl; auto.
+      }
+      induction (s_args c).
+      - exists nil. split_all; auto. intros. simpl in H0.
+        inversion H0. 
+      - assert (type_inhab (ty_subst (s_params c) vs a0)). {
+          apply vty_inhab_fun_aux with(n:=n)(seen:=ts:: seen); auto.
+          - apply Hval; simpl; auto. 
+          - intros. eapply IHn with(seen:=ts::seen); auto.
+            apply H1.
+          - intros. destruct (ty_subst_fun_cases (s_params c) vs vty_int x).
+            + rewrite Forall_forall in Hvsinhab. apply Hvsinhab; auto.
+            + rewrite H0.  
+              exists (Tconst (ConstInt 0)). split; auto. constructor.
+          - intros. apply valid_type_ty_subst_fun; auto. constructor. 
+          - apply Hcinhab. simpl; auto.
+      }
+      (*Now we get the head term, and rest by IH*)
+      destruct H0 as [thd [Hclose Hty]].
+      prove_hyp IHl.
+      {
+        intros. apply Hcinhab; simpl; auto.
+      }
+      prove_hyp IHl. { intros; apply Hval. simpl; auto. }
+      destruct IHl as [ttl [Hclose' [Hlen' Htys']]].
+      exists (thd :: ttl). split_all; simpl; auto.
+      intros j Hj.
+      destruct j; auto.
+      apply (Htys' j). lia.
+    }
+    (*Now we use this tms list to prove our goal*)
+    destruct H0 as [tms [Hclosed [Hlen Htys]]].
+    exists tms. split; auto.
+    (*We need to know that the constructor type is
+      (map vty_var (ts_params ts))*)
+    apply find_ts_in_ctx_some in Hts; destruct_all; subst.
+    specialize (Hadtval m a H0 H1).
+    unfold adt_valid_type in Hadtval.
+    destruct a as [a_name a_constrs]; simpl in *.
+    rewrite Forall_forall in Hadtval.
+    specialize (Hadtval _ c_in).
+    destruct Hadtval as [Hcparams Hcret].
+    assert (vty_cons a_name vs = ty_subst (s_params c) vs (f_ret c)). {
+      rewrite Hcret, Hcparams.
+      rewrite ty_subst_cons. f_equal.
+      rewrite map_ty_subst_var; auto.
+      rewrite <- Hcparams. apply s_params_Nodup.
+    }
+    rewrite H2.
+    apply T_Fun; auto.
+    + apply (constr_in_sig_f _ m _ c H0 H1); auto. 
+    + apply (Hconstrargs m _ c _ H0 H1); simpl; auto.
+    + rewrite Hcparams; lia.
+    + rewrite Forall_forall; intros x.
+      rewrite in_combine_iff; [| rewrite length_map; auto].
+      intros [j [Hj Hx]].
+      specialize (Hx tm_d vty_int).
+      subst. simpl. 
+      rewrite map_nth_inbound with (d2:=vty_int); auto. lia.
+Qed.
+
 (*The full check*)
 Definition typesym_inhab (ts: typesym) : bool :=
   typesym_inhab_fun nil ts (length (sig_t gamma)).
+
+(*And the corollary - the theorem we really want*)
+Theorem typesym_inhab_inhab (ts: typesym)
+(*If all adts have correct params and
+  return types*)
+(Hadtval: forall m a,
+  mut_in_ctx m gamma ->
+  adt_in_mut a m -> adt_valid_type a)
+(*And all argument types are valid*)
+(Hconstrargs: forall m a c x,
+  mut_in_ctx m gamma -> adt_in_mut a m ->
+  constr_in_adt c a -> In x (f_ret c :: (s_args c)) ->
+  valid_type gamma x)
+(*Assume that all abstract type
+  symbols applied to inhabited types are inhabited*)
+(Habs: forall ts vs,
+  In ts (sig_t gamma) ->
+  find_ts_in_ctx gamma ts = None ->
+  length vs = length (ts_args ts) ->
+  Forall (valid_type gamma) vs ->
+  Forall type_inhab vs ->
+  type_inhab (vty_cons ts vs)):
+(*If [typesym_inhab] gives true*)
+typesym_inhab ts ->
+(*Then if ts is an ADT*)
+forall m a,
+  find_ts_in_ctx gamma ts = Some (m, a) ->
+  (*Then, for any valid, inhabited arguments, 
+    there is a closed term of this type*)
+  forall vs,
+    length vs = length (ts_args ts) ->
+    Forall type_inhab vs ->
+    Forall (valid_type gamma) vs ->
+    type_inhab (vty_cons ts vs).
+Proof.
+  intros Hinhabts m a Hfind vs Hvslen Hvsinhab Hvsval.
+  destruct (inhab_fun_inhab_aux ts Hadtval Hconstrargs Habs 
+    (length (sig_t gamma)) nil Hinhabts m a Hfind)
+  as [c [c_in Hallvs]].
+  specialize (Hallvs vs Hvslen Hvsinhab Hvsval).
+  destruct Hallvs as [tms [Hclosed Hty]].
+  exists (Tfun c vs tms); split; auto.
+  revert Hclosed.
+  unfold closed_term. intros. simpl.
+  rewrite aset_big_union_empty. apply forallb_forall.
+  rewrite Forall_forall in Hclosed. auto.
+Qed.
+
+End InhabCorrect.
 
 (*An ADT is inhabited if its typesym is inhabited under the empty context*)
 Definition adt_inhab (a : alg_datatype) : bool :=
@@ -544,35 +811,6 @@ Definition uniform (m: mut_adt) : bool :=
 
 End UniformADT.
 
-(*We do not allow nested ADTs (e.g. tree a = | list (tree a)) since
-  our W-type encoding does not handle this, and we cannot construct a
-  correct interpretation (yet)*)
-Section NonNest.
-
-Fixpoint typesym_in_ty (ts: typesym) (v: vty) : bool :=
-  match v with
-  | vty_cons t tys => typesym_eq_dec t ts || existsb (typesym_in_ty ts) tys
-  | _ => false
-  end.
-
-Definition ts_nested (ts: typesym) (v: vty) : bool :=
-  match v with
-  | vty_cons t tys => existsb (typesym_in_ty ts) tys
-  | _ => false
-  end.
-
-Definition nonnest_list (m: mut_adt) (l: list vty) : bool :=
-  forallb (fun v => forallb (fun ts => negb (ts_nested ts v)) (typesyms_of_mut m)) l.
-
-Definition nonnest (m: mut_adt) : bool :=
-  forallb (fun a =>
-    forallb (fun (f: funsym) =>
-      nonnest_list m (s_args f)
-    ) (adt_constr_list a)
-  ) (typs m).
-
-End NonNest.
-
 (*Finally, all types in the constructors must be valid*)
 (*Definition adt_constrs_valid gamma (a: alg_datatype) :=
   Forall (fun (c: funsym) =>
@@ -587,7 +825,7 @@ Definition mut_valid gamma m :=
   Forall (adt_inhab gamma) (typs m) /\
   (*adt_positive gamma (typs m) /\*)
   valid_mut_rec m /\
-  uniform m /\ nonnest m.
+  uniform m.
 
 End ValidMut.
 
@@ -2997,34 +3235,8 @@ Proof.
   valid_context_tac.
   destruct a; simpl in *.
   valid_context_tac.
-  rewrite H9, H10. 
+  rewrite H8, H9. 
   auto.
-Qed.
-
-(*Substitute fun/pred symbol args with sorts for its parameters*)
-Definition sym_sigma_args (sym: fpsym) (s: list Types.sort) : list Types.sort :=
-  ty_subst_list_s (s_params sym) s (s_args sym).
-
-(*And likewise for function return type*)
-Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
-  ty_subst_s (s_params f) s (f_ret f).
-
-Lemma adt_typesym_funsym {m: mut_adt} (m_in: mut_in_ctx m gamma) 
-  {a: alg_datatype} (a_in: adt_in_mut a m) 
-  {c: funsym} (c_in: constr_in_adt c a)
-  {srts: list sort} (srts_len: length srts = length (m_params m)):
-  s_cons (adt_name a) srts = funsym_sigma_ret c srts.
-Proof.
-  unfold funsym_sigma_ret. unfold ty_subst_s; simpl.
-  rewrite (adt_constr_ret m_in a_in); auto.
-  simpl. f_equal.
-  rewrite <- map_ty_subst_var_sort at 1.
-  2: symmetry; apply srts_len.
-  2: apply (reflect_iff _ _ (nodup_NoDup typevar_eq_dec _)); apply m_nodup.
-  rewrite !map_map.
-  apply map_ext_in_iff.
-  intros. simpl. unfold ty_subst_s. simpl. f_equal. symmetry.
-  apply (adt_constr_params m_in a_in c_in).
 Qed.
 
 Lemma adts_names_nodups: forall {m: mut_adt}
@@ -3624,16 +3836,6 @@ Proof.
   auto.
 Qed.
 
-Lemma gamma_all_nonnest: forall m, mut_in_ctx m gamma ->
-  nonnest m.
-Proof.
-  valid_ctx_info.
-  intros m m_in.
-  apply mut_in_ctx_eq2 in m_in.
-  valid_context_tac.
-  auto.
-Qed.
-
 Lemma indprop_constrs_nonempty
 {l: list indpred_def} {p: predsym} {fs: list (string * formula)}
 (l_in: In (inductive_def l) gamma)
@@ -3680,6 +3882,108 @@ Proof.
     destruct H0 as [m [a [m_in [a_in Hts]]]]; subst.
     rewrite <- find_ts_in_ctx_none_iff in H.
     exfalso. apply (H a m); auto.
+Qed.
+
+(*From our inhabited types results, we know that if all abstract
+  types are assumed to be inhabited when given
+  inhabited arguments, then any valid sort is inhabited*)
+(*Note: it is also the case that if we assume all vars are
+  inhabited, then any valid type is inhabited. Not sure it is
+  worth it to show*)
+Theorem all_sorts_inhab
+  (Habs: forall t,
+    In (abs_type t) gamma ->
+    forall vs,
+      length vs = length (ts_args t) ->
+      Forall (valid_type gamma) vs ->
+      Forall (type_inhab gamma) vs ->
+      type_inhab gamma (vty_cons t vs)):
+  forall (v: vty) (Hsort: is_sort v),
+    valid_type gamma v ->
+    type_inhab gamma v.
+Proof.
+  intros v Hsort Hval. simpl in *.
+  revert v Hsort Hval.
+  apply (vty_rect (fun v => 
+    forall (Hsort: is_sort v) (Hval: valid_type gamma v),
+      type_inhab gamma v));
+  intros; inversion Hval; subst.
+  - exists (Tconst (ConstInt 0)).
+    split; auto. constructor.
+  - exists (Tconst (ConstReal (QArith_base.Qmake 0 xH))).
+    split; auto. constructor.
+  - unfold is_sort in Hsort. simpl in Hsort.
+    rewrite aset_singleton_not_empty in Hsort. discriminate.
+  - rename tsym into ts. 
+    destruct (find_ts_in_ctx gamma ts) eqn : Hts.
+    2: {
+      apply Habs; auto.
+      - apply abs_ts_notin; auto.
+      - rewrite Forall_forall; auto.
+      - rewrite Forall_forall; intros.
+        apply ForallT_In with(x:=x) in H; auto; [| apply vty_eq_dec].
+        apply H; auto.
+        apply is_sort_cons with(x:=x) in Hsort; auto.
+    }
+    (*constr case from valid context*)
+    assert (Hdefs:=gamma_valid).
+    apply valid_context_defs in Hdefs.
+    destruct p as [m a].
+    assert (Hts':=Hts).
+    apply find_ts_in_ctx_some in Hts.
+    destruct Hts as [m_in [a_in Hts]]; subst.
+    apply mut_in_ctx_eq2 in m_in.
+    rewrite Forall_forall in Hdefs.
+    assert (Hdefs':=Hdefs).
+    specialize (Hdefs _ m_in).
+    simpl in Hdefs.
+    unfold mut_valid in Hdefs.
+    destruct Hdefs as [_ [Hinhab _]].
+    rewrite Forall_forall in Hinhab.
+    specialize (Hinhab _ (in_bool_In _ _ _ a_in)).
+    unfold adt_inhab in Hinhab.
+    apply typesym_inhab_inhab with(m:=m)(a:=a); auto.
+    + (*All adts in gamma are valid*)
+      intros m' a' m_in' a_in'.
+      apply mut_in_ctx_eq2 in m_in'.
+      specialize (Hdefs' _ m_in').
+      simpl in Hdefs'.
+      unfold mut_valid in Hdefs'.
+      destruct_all.
+      rewrite Forall_forall in H0.
+      apply H0. apply in_bool_In in a_in'; auto.
+    + (*All types in constrs are valid*)
+      intros m' a' c' x m_in' a_in' c_in'.
+      apply mut_in_ctx_eq2 in m_in'.
+      specialize (Hdefs' _ m_in').
+      simpl in Hdefs'.
+      unfold mut_valid in Hdefs'.
+      destruct_all.
+      rewrite Forall_forall in H1.
+      specialize (H1 _ (in_bool_In _ _ _ a_in')).
+      apply valid_context_wf in gamma_valid.
+      apply wf_context_alt in gamma_valid.
+      destruct gamma_valid as [Hwf _].
+      rewrite Forall_forall in Hwf.
+      assert (Hinc: In c' (funsyms_of_context gamma)). {
+        eapply constrs_in_funsyms; eauto.
+        apply mut_in_ctx_eq2 in m_in'; auto.
+      }
+      specialize (Hwf _ Hinc).
+      unfold wf_funsym in Hwf.
+      rewrite Forall_forall in Hwf.
+      intros Hinx.
+      specialize (Hwf _ Hinx).
+      apply Hwf.
+    + (*all abstract types inhabited*)
+      intros ts vs' Hints Htsnone Hlenvs Hallinhab.
+      apply Habs; auto.
+      apply abs_ts_notin; auto.
+    + (*From IH*)
+      rewrite Forall_forall; intros.
+      apply ForallT_In with(x:=x) in H; auto; [| apply vty_eq_dec].
+      apply H; auto. apply is_sort_cons with(x:=x) in Hsort; auto.
+    + rewrite Forall_forall; auto.
 Qed.
 
 Lemma nonrec_notin_fun {f args body}:

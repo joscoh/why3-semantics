@@ -140,17 +140,18 @@ Definition elim_let_f_fv bt bf f :=
 Section Rep.
 
 Context {gamma: context} (gamma_valid: valid_context gamma) 
-  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar).
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) 
+  (pf: pi_funpred gamma_valid pd pdf).
 
 Lemma elim_let_rep bt bf t f:
   (forall vv ty (Hty1: term_has_type gamma t ty) 
     (Hty2: term_has_type gamma (elim_let_t bt bf t) ty),
-    term_rep gamma_valid pd pf vt vv (elim_let_t bt bf t) ty Hty2 =
-    term_rep gamma_valid pd pf vt vv t ty Hty1) /\
+    term_rep gamma_valid pd pdf vt pf vv (elim_let_t bt bf t) ty Hty2 =
+    term_rep gamma_valid pd pdf vt pf vv t ty Hty1) /\
   (forall vv (Hty1: formula_typed gamma f) 
     (Hty2: formula_typed gamma (elim_let_f bt bf f)),
-    formula_rep gamma_valid pd pf vt vv (elim_let_f bt bf f) Hty2 =
-    formula_rep gamma_valid pd pf vt vv f Hty1).
+    formula_rep gamma_valid pd pdf vt pf vv (elim_let_f bt bf f) Hty2 =
+    formula_rep gamma_valid pd pdf vt pf vv f Hty1).
 Proof.
   revert t f; apply term_formula_ind; intros;
   try solve[simpl; apply term_rep_irrel];
@@ -240,12 +241,12 @@ Definition single_trans_goal (f: formula -> formula) : trans :=
 Lemma single_trans_goal_sound f:
   (forall gamma (gamma_valid: valid_context gamma) 
   fmla (Hfmla: formula_typed gamma fmla),
-  forall pd pf (pf_full: full_interp gamma_valid pd pf) 
+  forall pd pdf pf (pf_full: full_interp gamma_valid pd pf) 
     (Hf: formula_typed gamma (f fmla)), 
     (forall vt vv,
-    formula_rep gamma_valid pd pf vt vv (f fmla) Hf) ->
+    formula_rep gamma_valid pd pdf vt pf vv (f fmla) Hf) ->
     forall vt vv,
-    formula_rep gamma_valid pd pf vt vv fmla Hfmla)->
+    formula_rep gamma_valid pd pdf vt pf vv fmla Hfmla)->
   sound_trans (single_trans_goal f).
 Proof.
   intros Hf.
@@ -261,8 +262,8 @@ Proof.
   specialize (Hval gamma_valid Hty1).
   simpl_task. unfold single_goal in *. simpl_task.
   unfold log_conseq_gen in *.
-  intros pd pf pf_full Hall.
-  specialize (Hval pd pf pf_full).
+  intros pd pdf pf pf_full Hall.
+  specialize (Hval pd pdf pf pf_full).
   forward Hval.
   { intros d Hd. eapply satisfies_irrel. apply Hall. Unshelve. auto. }
   unfold satisfies in *.
@@ -1092,20 +1093,21 @@ End FreeVars.
 Section Rep.
 
 Context {gamma: context} (gamma_valid: valid_context gamma) 
-  (pd: pi_dom)  (pf: pi_funpred gamma_valid pd) (vt: val_typevar).
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) 
+  (pf: pi_funpred gamma_valid pd pdf).
 
 Definition elim_let_tm_fmla_rep_eq (x: tm_fmla) (y: tm_fmla_ty x) : Prop :=
   match x as x' return tm_fmla_ty x' -> Prop with
   | Left t1 => fun t2 => 
     forall vv ty (Hty1: term_has_type gamma t1 ty) 
       (Hty2: term_has_type gamma t2 ty),
-    term_rep gamma_valid pd pf vt vv t2 ty Hty2 =
-    term_rep gamma_valid pd pf vt vv t1 ty Hty1
+    term_rep gamma_valid pd pdf vt pf vv t2 ty Hty2 =
+    term_rep gamma_valid pd pdf vt pf vv t1 ty Hty1
   | Right f1 => fun f2 =>
     forall vv (Hty1: formula_typed gamma f1)
       (Hty2: formula_typed gamma f2),
-    formula_rep gamma_valid pd pf vt vv f2 Hty2 =
-    formula_rep gamma_valid pd pf vt vv f1 Hty1
+    formula_rep gamma_valid pd pdf vt pf vv f2 Hty2 =
+    formula_rep gamma_valid pd pdf vt pf vv f1 Hty1
   end y.
 
 Lemma elim_let_tm_fmla_rep (x: tm_fmla) b1 b2 Heq1 Heq2:
@@ -1195,8 +1197,8 @@ Qed.
 Lemma elim_let_fmla_rep vv (f: formula) :
   forall (Hty1: formula_typed gamma f)
     (Hty2: formula_typed gamma (elim_let_fmla f)),
-    formula_rep gamma_valid pd pf vt vv (elim_let_fmla f) Hty2 =
-    formula_rep gamma_valid pd pf vt vv f Hty1.
+    formula_rep gamma_valid pd pdf vt pf vv (elim_let_fmla f) Hty2 =
+    formula_rep gamma_valid pd pdf vt pf vv f Hty1.
 Proof.
   apply (elim_let_tm_fmla_rep (Right f) bt bf eq_refl eq_refl);
   auto.

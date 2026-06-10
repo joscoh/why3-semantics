@@ -31,19 +31,20 @@ Proof.
   intros. destruct Heq; reflexivity.
 Qed.
 
-Lemma dom_cast_refl {s1} (H: s1 = s1) x:
-  dom_cast H x = x.
-Proof.
-  assert (H = eq_refl). apply UIP_dec. apply sort_eq_dec.
-  subst; reflexivity.
-Qed.
-
 Lemma dom_cast_inj {v1 v2 : Types.sort} (H1 H2: v1 = v2) (d1 d2: domain v1):
   dom_cast H1 d1 = dom_cast H2 d2 ->
   d1 = d2.
 Proof.
-  subst. rewrite !dom_cast_refl. auto.
+  subst. assert (H2 = eq_refl) by (apply UIP_dec, sort_eq_dec). subst.
+  unfold dom_cast; simpl. subst; auto.
 Qed.
+
+(*Lemma dom_cast_inj: forall {v1 v2: Types.sort} (Heq: v1 = v2) (x1 x2: domain v1),
+  dom_cast Heq x1 = dom_cast Heq x2 ->
+  x1 = x2.
+Proof.
+  intros. destruct Heq. apply H.
+Qed.*)
 
 Lemma dom_cast_compose {s1 s2 s3: Types.sort}
   (Heq1: s2 = s3) (Heq2: s1 = s2) x:
@@ -56,7 +57,10 @@ Qed.
 Lemma dom_cast_eq {s1 s2: Types.sort} (H1 H2: s1 = s2) x:
   dom_cast H1 x = dom_cast H2 x.
 Proof.
-  subst. rewrite !dom_cast_refl; reflexivity.
+  subst. unfold dom_cast. simpl.
+  assert (H2 = eq_refl). apply UIP_dec. apply sort_eq_dec.
+  rewrite H.
+  reflexivity.
 Qed.
 
 Lemma dom_cast_eq'(s1 s2: Types.sort)
@@ -65,6 +69,13 @@ Lemma dom_cast_eq'(s1 s2: Types.sort)
   dom_cast H1 x = dom_cast H2 y.
 Proof.
   intros; subst. apply dom_cast_eq.
+Qed.
+
+Lemma dom_cast_refl {s1} (H: s1 = s1) x:
+  dom_cast H x = x.
+Proof.
+  assert (H = eq_refl). apply UIP_dec. apply sort_eq_dec.
+  subst; reflexivity.
 Qed.
 
 Lemma rewrite_dom_cast: forall (v1 v2: Types.sort) (Heq: v1 = v2)
@@ -88,12 +99,6 @@ Lemma dom_cast_switch (v1 v2: Types.sort) (H1: v1 = v2) (x1: domain v1) (x2: dom
   x1 = dom_cast (eq_sym H1) x2.
 Proof.
   intros Hx2; subst. simpl. reflexivity.
-Qed.
-
-Lemma dom_cast_eq_iff (s1 s2: sort) (Heq1 Heq2: s1 = s2) (x y: domain s1):
-  dom_cast Heq1 x = dom_cast Heq2 y <-> x = y.
-Proof.
-  subst. rewrite !dom_cast_refl; auto.
 Qed.
 
 End DomCast.

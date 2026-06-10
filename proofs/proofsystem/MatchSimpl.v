@@ -119,12 +119,13 @@ Proof.
 Qed. 
 
 Lemma match_val_single_matches_none {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (vt: val_typevar) (ty: vty) (p: pattern) 
-    (Hty: pattern_has_type gamma p ty) (t: term) (pf: pi_funpred gamma_valid pd) 
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
+    (vt: val_typevar) (ty: vty) (p: pattern) 
+    (Hty: pattern_has_type gamma p ty) (t: term) (pf: pi_funpred gamma_valid pd pdf) 
     (vv: val_vars pd vt) (Hty2: term_has_type gamma t ty):
   matches gamma p t = NoMatch ->
-  match_val_single gamma_valid pd pf vt ty p Hty
-    (term_rep gamma_valid pd pf vt vv t ty Hty2) = None.
+  match_val_single gamma_valid pd pdf vt ty p Hty
+    (term_rep gamma_valid pd pdf vt pf vv t ty Hty2) = None.
 Proof.
   generalize dependent t. revert Hty. revert ty. induction p; intros; auto;
   try solve[inversion H].
@@ -196,16 +197,17 @@ Proof.
         apply s_params_Nodup.
       }
       subst.
-      erewrite (constrs_eq gamma_valid pd pf m_in a_in c_in).
+      erewrite (constrs gamma_valid pd pdf pf m adt f0 m_in a_in c_in).
       Unshelve. 2: exact (eq_trans (length_map (v_subst vt) vs2) e).
-      unfold cast_dom_vty.
-      rewrite !dom_cast_compose.
+      unfold constr_rep_dom, cast_dom_vty, dom_cast.
+      rewrite !scast_scast.
       assert (Hinmut = a_in) by apply bool_irrelevance.
-      subst. rewrite dom_cast_refl.
+      subst.
+      rewrite scast_refl_uip.
       intros Hconstrs.
       assert (Hinctx = m_in) by apply bool_irrelevance. subst.
       assert (f0 <> f) by auto.
-      apply (constrs_disj _ _ _ _ _ _ _ _ _ _ H1 Hconstrs).
+      apply (constr_rep_disjoint _ _ _ _ _ _ _ _ _ _ _ H1 Hconstrs).
     }
     (*Before other cases, something we need*)
     subst; simpl in H0.
@@ -248,7 +250,7 @@ Proof.
     rewrite Hlenpsl0, Nat.eqb_refl in H0.
     (*Now, we are at the [nested_matches] case, so we need nested induction*)
     match goal with 
-    | |- iter_arg_list ?val ?pd ?pf ?l  
+    | |- iter_arg_list ?val ?pd ?pdf ?l  
       (cast_arg_list (sym_sigma_args_map ?vt ?f1 ?vs ?H) ?a) ?ps ?H1 = None =>
       generalize dependent H;
       generalize dependent H1
@@ -262,14 +264,16 @@ Proof.
     simpl in *.
     revert e1.
     simpl_rep_full.
-    erewrite (constrs_eq gamma_valid pd pf Hinctx Hinmut c_in).
+    erewrite (constrs gamma_valid pd pdf pf m adt f0 Hinctx Hinmut c_in).
     Unshelve. 2: exact (eq_trans (length_map (v_subst vt) vs2) e) .
-    unfold cast_dom_vty.
-    rewrite !dom_cast_compose, dom_cast_refl.
+    unfold constr_rep_dom, cast_dom_vty, dom_cast.
+    rewrite !scast_scast.
+    rewrite scast_refl_uip.
     intros Hconstrs.
     assert (c_in = c_in') by apply bool_irrelevance; subst.
     (*Use injectivity of constrs*)
-    apply constrs_inj in Hconstrs.
+    apply constr_rep_inj in Hconstrs.
+      2: apply (gamma_all_unif gamma_valid); auto.
     subst.
     unfold fun_arg_list.
     generalize dependent  (s_params_Nodup f0).
@@ -292,7 +296,8 @@ Proof.
       erewrite hlist_hd_cast with (Heq2:=Heq1).
       simpl.
       rewrite hlist_tl_cast with (Heq:=e1). simpl.
-      rewrite rewrite_dom_cast, dom_cast_compose, dom_cast_refl.
+      unfold dom_cast. rewrite !scast_scast.
+      rewrite scast_refl_uip.
       (*And now we can use our IH*)
       destruct (matches gamma p a) eqn : Hmatcha; try inversion H0.
       * (*If first does not match, get [match_val_single] None*)
@@ -314,12 +319,12 @@ Qed.
 
 (*See if this is easier*)
 Lemma match_val_single_matches_not_none {gamma} (gamma_valid: valid_context gamma)
-(pd: pi_dom) (vt: val_typevar) (ty: vty) (p: pattern) 
-  (Hty: pattern_has_type gamma p ty) (t: term) (pf: pi_funpred gamma_valid pd) 
+(pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) (ty: vty) (p: pattern) 
+  (Hty: pattern_has_type gamma p ty) (t: term) (pf: pi_funpred gamma_valid pd pdf) 
   (vv: val_vars pd vt) (Hty2: term_has_type gamma t ty) subs:
 matches gamma p t = Matches subs ->
-match_val_single gamma_valid pd pf vt ty p Hty
-  (term_rep gamma_valid pd pf vt vv t ty Hty2) <> None.
+match_val_single gamma_valid pd pdf vt ty p Hty
+  (term_rep gamma_valid pd pdf vt pf vv t ty Hty2) <> None.
 Proof.
   generalize dependent t. revert Hty. revert ty. revert subs. induction p; intros; auto;
   try solve[discriminate].
@@ -401,13 +406,15 @@ Proof.
         apply s_params_Nodup.
       }
       subst.
-      erewrite (constrs_eq gamma_valid pd pf Hinctx Hinmut c_in).
+      erewrite (constrs gamma_valid pd pdf pf m adt f0 Hinctx Hinmut c_in).
       Unshelve. 2: exact (eq_trans (length_map (v_subst vt) vs2) e).
-      unfold cast_dom_vty. rewrite !dom_cast_compose, dom_cast_refl.
+      unfold constr_rep_dom, cast_dom_vty, dom_cast.
+      rewrite !scast_scast.
+      rewrite scast_refl_uip.
       intros Hconstrs.
       (*assert (Hinctx = m_in) by apply bool_irrelevance. subst.*)
       assert (f0 <> f') by auto.
-      apply (constrs_disj _ _ _ _ _ _ _ _ _ _ H1 Hconstrs).
+      apply (constr_rep_disjoint _ _ _ _ _ _ _ _ _ _ _ H1 Hconstrs).
     }
     subst; simpl in *.
     destruct constr as [f' Hf']; simpl in *; subst.
@@ -431,7 +438,7 @@ Proof.
     }
     (*Now, we are at the [nested_matches] case, so we need nested induction*)
     match goal with 
-    | |- iter_arg_list ?val ?pd ?pf ?l  
+    | |- iter_arg_list ?val ?pd ?pdf ?l  
       (cast_arg_list (sym_sigma_args_map ?vt ?f1 ?vs ?H) ?a) ?ps ?H1 <> None =>
       generalize dependent H;
       generalize dependent H1
@@ -446,13 +453,16 @@ Proof.
     simpl in *.
     revert e0.
     simpl_rep_full.
-    erewrite (constrs_eq gamma_valid pd pf Hinctx Hinmut c_in).
+    erewrite (constrs gamma_valid pd pdf pf m adt f0 Hinctx Hinmut c_in).
     Unshelve. 2: exact (eq_trans (length_map (v_subst vt) vs2) e) .
-    unfold cast_dom_vty. rewrite !dom_cast_compose, dom_cast_refl.
+    unfold constr_rep_dom, cast_dom_vty, dom_cast.
+    rewrite !scast_scast.
+    rewrite scast_refl_uip.
     intros Hconstrs.
     assert (c_in = c_in') by apply bool_irrelevance; subst.
     (*Use injectivity of constrs*)
-    apply constrs_inj in Hconstrs.
+    apply constr_rep_inj in Hconstrs.
+      2: apply (gamma_all_unif gamma_valid); auto.
     subst.
     unfold fun_arg_list.
     generalize dependent  (s_params_Nodup f0).
@@ -477,7 +487,8 @@ Proof.
       erewrite hlist_hd_cast with (Heq2:=Heq1).
       simpl.
       rewrite hlist_tl_cast with (Heq:=e1). simpl.
-      rewrite rewrite_dom_cast, dom_cast_compose, dom_cast_refl.
+      unfold dom_cast. rewrite !scast_scast.
+      rewrite scast_refl_uip.
       (*And now we can use our IH*)
       destruct (matches gamma p a) eqn : Hmatcha; try inversion H0.
       * destruct (nested_matches gamma ps l0); inversion H5. 
@@ -522,19 +533,19 @@ Qed.
 
 (*And the some case*)
 Lemma match_val_single_matches_some {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (vt: val_typevar) (ty: vty) (p: pattern) 
-    (Hty: pattern_has_type gamma p ty) (t: term) (pf: pi_funpred gamma_valid pd) 
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) (ty: vty) (p: pattern) 
+    (Hty: pattern_has_type gamma p ty) (t: term) (pf: pi_funpred gamma_valid pd pdf) 
     (vv: val_vars pd vt) (Hty2: term_has_type gamma t ty)
     (l: amap vsymbol term) l1:
   matches gamma p t = Matches l ->
-  match_val_single gamma_valid pd pf vt ty p Hty
-  (term_rep gamma_valid pd pf vt vv t ty Hty2) = Some l1 ->
+  match_val_single gamma_valid pd pdf vt ty p Hty
+  (term_rep gamma_valid pd pdf vt pf vv t ty Hty2) = Some l1 ->
   keys l1 = keys l /\
   (forall x y, amap_lookup l1 x = Some y ->
     exists t, amap_lookup l x = Some t /\
     exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 y), 
        projT2 y =
-       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pf vt vv t ty1 Hty1)).
+       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv t ty1 Hty1)).
 Proof.
   generalize dependent t. revert Hty. revert ty.
   revert l. revert l1. induction p; intros; auto.
@@ -593,7 +604,7 @@ Proof.
     (*rewrite Hlenpsl0, Nat.eqb_refl in H0.*)
     (*Now, we are at the [nested_matches] case, so we need nested induction*)
     match goal with 
-    | |- iter_arg_list ?val ?pd ?pff ?l  
+    | |- iter_arg_list ?val ?pd ?pdf ?l  
       (cast_arg_list (sym_sigma_args_map ?vt ?f1 ?vs ?H) ?a) ?ps ?H1 = Some ?x -> _ =>
       generalize dependent H;
       generalize dependent H1
@@ -607,12 +618,15 @@ Proof.
     simpl in *.
     revert e0.
     simpl_rep_full.
-    erewrite (constrs_eq gamma_valid pd pf Hinctx Hinmut c_in).
+    erewrite (constrs gamma_valid pd pdf pf m adt f0 Hinctx Hinmut c_in).
     Unshelve. 2: exact (eq_trans (length_map (v_subst vt) vs2) e) .
-    unfold cast_dom_vty. rewrite !dom_cast_compose, dom_cast_refl.
+    unfold constr_rep_dom, cast_dom_vty, dom_cast.
+    rewrite !scast_scast.
+    rewrite scast_refl_uip.
     intros Hconstrs.
     (*Use injectivity of constrs*)
-    apply constrs_inj in Hconstrs.
+    apply constr_rep_inj in Hconstrs.
+    2: apply (gamma_all_unif gamma_valid); auto.
     subst.
     unfold fun_arg_list.
     generalize dependent  (s_params_Nodup f0).
@@ -638,7 +652,8 @@ Proof.
       erewrite hlist_hd_cast with (Heq2:=Heq1).
       simpl.
       rewrite hlist_tl_cast with (Heq:=e1). simpl.
-      rewrite rewrite_dom_cast, dom_cast_compose, dom_cast_refl.
+      unfold dom_cast. rewrite !scast_scast.
+      rewrite scast_refl_uip.
       (*And now we can use our IH*)
       destruct (matches gamma p a) eqn : Hmatcha; try inversion H0.
       * (*If first does not match, get [match_val_single] None*)
@@ -685,7 +700,7 @@ Proof.
         eapply IHp1. apply Hmatch1. apply Hmatch.
       * (*Here, use previous lemma*) intros Hmatch2.
         exfalso.
-        apply (match_val_single_matches_not_none _ _ _ _ _ _ _ _ _ _ _ 
+        apply (match_val_single_matches_not_none _ _ _ _ _ _ _ _ _ _ _ _ 
           Hmatch1 Hmatch).
   - (*Pbind*)
     simpl in *. revert H0.
@@ -709,25 +724,25 @@ Qed.
 
 (*The combined theorem we want*)
 Lemma match_val_single_matches_some' {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (vt: val_typevar) (ty: vty) (p: pattern) 
-    (Hty: pattern_has_type gamma p ty) (t: term) (pf: pi_funpred gamma_valid pd) 
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) (ty: vty) (p: pattern) 
+    (Hty: pattern_has_type gamma p ty) (t: term) (pf: pi_funpred gamma_valid pd pdf) 
     (vv: val_vars pd vt) (Hty2: term_has_type gamma t ty)
     (l: amap vsymbol term):
   matches gamma p t = Matches l ->
 
   exists l1,
-  match_val_single gamma_valid pd pf vt ty p Hty
-    (term_rep gamma_valid pd pf vt vv t ty Hty2) = Some l1 /\
+  match_val_single gamma_valid pd pdf vt ty p Hty
+    (term_rep gamma_valid pd pdf vt pf vv t ty Hty2) = Some l1 /\
   keys l1 = keys l /\
   (forall x y, amap_lookup l1 x = Some y ->
     exists t, amap_lookup l x = Some t /\
     exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 y), 
        projT2 y =
-       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pf vt vv t ty1 Hty1)).
+       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv t ty1 Hty1)).
 Proof.
   intros.
-  destruct (match_val_single gamma_valid pd pf vt ty p Hty
-  (term_rep gamma_valid pd pf vt vv t ty Hty2)) eqn : Hmatch.
+  destruct (match_val_single gamma_valid pd pdf vt ty p Hty
+  (term_rep gamma_valid pd pdf vt pf vv t ty Hty2)) eqn : Hmatch.
   - exists a. split; auto.
     eapply match_val_single_matches_some; eauto.
   - exfalso. eapply match_val_single_matches_not_none. apply H. apply Hmatch.
@@ -771,11 +786,11 @@ with simpl_match_f gamma (f: formula) : formula :=
   end.
 
 Lemma term_rep_eq {gamma: context} (gamma_valid: valid_context gamma)
-(pd: pi_dom) (vt: val_typevar) (pf: pi_funpred gamma_valid pd) (vv: val_vars pd vt)
+(pd: pi_dom) pdf (vt: val_typevar) (pf: pi_funpred gamma_valid pd pdf) (vv: val_vars pd vt)
 (t1 t2: term) ty (Hty1: term_has_type gamma t1 ty) (Hty2: term_has_type gamma t2 ty):
 t1 = t2 ->
-term_rep gamma_valid pd pf vt vv t1 ty Hty1 =
-term_rep gamma_valid pd pf vt vv t2 ty Hty2.
+term_rep gamma_valid pd pdf vt pf vv t1 ty Hty1 =
+term_rep gamma_valid pd pdf vt pf vv t2 ty Hty2.
 Proof. intros. subst. apply term_rep_irrel. Qed.
 
 
@@ -851,8 +866,8 @@ Qed.
     multiple substitution)*)
 
 Lemma extend_val_with_args_eq {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (vt: val_typevar) 
-  (pf: pi_funpred gamma_valid pd)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) 
+  (pf: pi_funpred gamma_valid pd pdf)
   (vv: val_vars pd vt)
   (m1: amap vsymbol {s : sort & domain (dom_aux pd) s})
   (m2: amap vsymbol term)
@@ -862,12 +877,20 @@ Lemma extend_val_with_args_eq {gamma} (gamma_valid: valid_context gamma)
     exists t, amap_lookup m2 x = Some t /\
     exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 y), 
        projT2 y =
-       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pf vt vv t ty1 Hty1)))
+       dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv t ty1 Hty1)))
+  (* (Hsnd: Forall
+    (fun x : {x : sort & domain (dom_aux pd) x} * term =>
+    exists
+      (ty : vty) (Hty : term_has_type gamma (snd x) ty) 
+    (Heq : v_subst vt ty = projT1 (fst x)),
+      projT2 (fst x) =
+      dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv (snd x) ty Hty))
+    (combine (map snd l1) (map snd l2))) *)
   (Hall: Forall (fun x : term * vty => term_has_type gamma (fst x) (snd x))
     (combine (vals m2) (map snd (keylist m2)))):
   forall x, 
     (val_with_args pd vt vv (keylist m2)
-    (map_arg_list gamma_valid pd vt pf vv (vals m2) (map snd (keylist m2))
+    (map_arg_list gamma_valid pd pdf vt pf vv (vals m2) (map snd (keylist m2))
       (map_snd_fst_len (elements m2)) Hall)) x =
   (extend_val_with_list pd vt vv m1) x.
 Proof.
@@ -927,30 +950,31 @@ Proof.
   gen_dom_cast. intros e1 e2 e3. rewrite Hy. rewrite !dom_cast_compose.
   gen_dom_cast. clear -Hi1 Hi2 Hi.
   repeat match goal with
-  | |- context [term_rep ?g ?pd ?pf ?vt ?vv ?t ?ty ?Hty] =>
+  | |- context [term_rep ?g ?pd ?pdf ?vt ?of ?vv ?t ?ty ?Hty] =>
     generalize dependent Hty
   end. clear Hall. rewrite Hi2. intros Hty2.
   rewrite (map_nth_inbound snd) with (d2:=(vs_d)) by (rewrite keylist_length; lia).
   unfold vsymbol in *.
   rewrite Hi1. intros Hty1 Heq1 Heq2.
-  rewrite !dom_cast_refl.
+  assert (Heq1 = eq_refl) by (apply UIP_dec, sort_eq_dec);
+  assert (Heq2 = eq_refl) by (apply UIP_dec, sort_eq_dec); subst; unfold dom_cast; simpl.
   apply term_rep_irrel.
 Qed.
 
 Theorem simpl_match_rep {gamma: context} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (vt: val_typevar) 
-  (pf: pi_funpred gamma_valid pd)
+  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (vt: val_typevar) 
+  (pf: pi_funpred gamma_valid pd pdf)
   (t: term) (f: formula):
   (forall (vv: val_vars pd vt) (ty: vty) 
     (Hty1: term_has_type gamma (simpl_match_t gamma t) ty)
     (Hty2: term_has_type gamma t ty),
-    term_rep gamma_valid pd pf vt vv (simpl_match_t gamma t) ty Hty1 =
-    term_rep gamma_valid pd pf vt vv t ty Hty2) /\
+    term_rep gamma_valid pd pdf vt pf vv (simpl_match_t gamma t) ty Hty1 =
+    term_rep gamma_valid pd pdf vt pf vv t ty Hty2) /\
   (forall (vv: val_vars pd vt)
     (Hty1: formula_typed gamma (simpl_match_f gamma f))
     (Hty2: formula_typed gamma f),
-    formula_rep gamma_valid pd pf vt vv (simpl_match_f gamma f) Hty1 =
-    formula_rep gamma_valid pd pf vt vv f Hty2).
+    formula_rep gamma_valid pd pdf vt pf vv (simpl_match_f gamma f) Hty1 =
+    formula_rep gamma_valid pd pdf vt pf vv f Hty2).
 Proof.
   revert t f; apply term_formula_ind; intros; try solve[apply term_rep_irrel];
   try solve[apply fmla_rep_irrel]; simpl in *.
@@ -984,8 +1008,8 @@ Proof.
     {(*if DontKnow, trivial*) contradiction. }
     + (*Case 1: None - we show that [match_val_single] gives None*)
       destruct a as [p1 t1]; simpl in *.
-      assert (match_val_single gamma_valid pd pf vt v p1 (Forall_inv Hpat2)
-        (term_rep gamma_valid pd pf vt vv tm v Hty2) = None).
+      assert (match_val_single gamma_valid pd pdf vt v p1 (Forall_inv Hpat2)
+        (term_rep gamma_valid pd pdf vt pf vv tm v Hty2) = None).
       { 
         apply match_val_single_matches_none; auto.
       }
@@ -994,14 +1018,14 @@ Proof.
       destruct a as [p1 t1]; simpl in *. intros.
       (*Let's see lemma*)
       assert (Hmatch: exists l1,
-        match_val_single gamma_valid pd pf vt v p1 (Forall_inv Hpat2)
-          (term_rep gamma_valid pd pf vt vv tm v Hty2) = Some l1 /\
+        match_val_single gamma_valid pd pdf vt v p1 (Forall_inv Hpat2)
+          (term_rep gamma_valid pd pdf vt pf vv tm v Hty2) = Some l1 /\
         keys l1 = keys a0 /\
         (forall x y, amap_lookup l1 x = Some y ->
           exists t, amap_lookup a0 x = Some t /\
           exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 y), 
              projT2 y =
-             dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pf vt vv t ty1 Hty1))).
+             dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv t ty1 Hty1))).
       {
         apply match_val_single_matches_some'.
         auto.
@@ -1034,9 +1058,9 @@ Proof.
     rewrite Forall_forall in H; apply H. apply nth_In; auto.
   - (*Fquant*)
     assert (Hd: forall d,
-    formula_rep gamma_valid pd pf vt (substi pd vt vv v d) (simpl_match_f gamma f)
+    formula_rep gamma_valid pd pdf vt pf (substi pd vt vv v d) (simpl_match_f gamma f)
     (typed_quant_inv Hty1) =
-    formula_rep gamma_valid pd pf vt (substi pd vt vv v d) f (typed_quant_inv Hty2)).
+    formula_rep gamma_valid pd pdf vt pf (substi pd vt vv v d) f (typed_quant_inv Hty2)).
     {
       intros d. apply H.
     }
@@ -1071,8 +1095,8 @@ Proof.
     {(*if DontKnow, trivial*) contradiction. }
     + (*Case 1: None - we show that [match_val_single] gives None*)
       destruct a as [p1 t1]; simpl in *.
-      assert (match_val_single gamma_valid pd pf vt v p1 (Forall_inv Hpat2)
-        (term_rep gamma_valid pd pf vt vv tm v Hty2) = None).
+      assert (match_val_single gamma_valid pd pdf vt v p1 (Forall_inv Hpat2)
+        (term_rep gamma_valid pd pdf vt pf vv tm v Hty2) = None).
       { 
         apply match_val_single_matches_none; auto.
       }
@@ -1081,14 +1105,14 @@ Proof.
       destruct a as [p1 t1]; simpl in *. intros.
       (*Let's see lemma*)
       assert (Hmatch: exists l1,
-        match_val_single gamma_valid pd pf vt v p1 (Forall_inv Hpat2)
-          (term_rep gamma_valid pd pf vt vv tm v Hty2) = Some l1 /\
+        match_val_single gamma_valid pd pdf vt v p1 (Forall_inv Hpat2)
+          (term_rep gamma_valid pd pdf vt pf vv tm v Hty2) = Some l1 /\
         keys l1 = keys a0 /\
         (forall x y, amap_lookup l1 x = Some y ->
           exists t, amap_lookup a0 x = Some t /\
           exists ty1 Hty1 (Heq: v_subst vt ty1 = projT1 y), 
              projT2 y =
-             dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pf vt vv t ty1 Hty1))).
+             dom_cast (dom_aux pd) Heq (term_rep gamma_valid pd pdf vt pf vv t ty1 Hty1))).
       {
         apply match_val_single_matches_some'.
         auto.
@@ -1111,11 +1135,11 @@ Proof.
 Qed.
 
 Definition simpl_match_t_rep {gamma} (gamma_valid: valid_context gamma)
-  pd vt pf vv t :=
-  (proj_tm (simpl_match_rep gamma_valid pd vt pf) t) vv.
+  pd pdf vt pf vv t :=
+  (proj_tm (simpl_match_rep gamma_valid pd pdf vt pf) t) vv.
 Definition simpl_match_f_rep {gamma} (gamma_valid: valid_context gamma)
-  pd vt pf vv f :=
-  (proj_fmla (simpl_match_rep gamma_valid pd vt pf) f) vv.
+  pd pdf vt pf vv f :=
+  (proj_fmla (simpl_match_rep gamma_valid pd pdf vt pf) f) vv.
 
 (*Last piece: typing*)
 Lemma simpl_match_ty gamma t f:

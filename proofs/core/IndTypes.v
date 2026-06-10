@@ -471,7 +471,6 @@ Variable m: list alg_datatype.
 (*Construct the base type*)
 
 (*Filter out the inductive types*)
-
 Definition get_nonind_vtys (l: list vty) : list vty :=
   filter (fun v => match v with 
                     | vty_cons ts vs =>
@@ -888,172 +887,6 @@ End Theorems.
 
 End ADTConstr.
 
-(*Reasoning about equality of W-types, [mk_adts], etc*)
-Section Ext.
-
-(* Mutual recursion means we need additional typecasts and axioms
-  to deal with the dependent functions. We do that here. Since this is
-  only for testing, we don't introduce any axioms into the semantics*)
-
-  Section Cast.
-
-  (*Some results about casts require UIP*)
-  
-  (*We need UIP, so we assume it directly (rather than something like
-    excluded middle or proof irrelevance, which implies UIP)*)
-  
-  Lemma scast_left: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: Either A B = Either A' B') x,
-    scast H3 (Left A B x) = Left A' B' (scast H1 x).
-  Proof.
-    intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect.
-    assert (H3 = erefl) by apply UIP.
-    rewrite H. reflexivity.
-  Qed.
-  
-  Lemma scast_right: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: Either A B = Either A' B') x,
-  scast H3 (Right A B x) = Right A' B' (scast H2 x).
-  Proof.
-    intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect. simpl.
-    assert (H3 = erefl) by apply UIP.
-    rewrite H. reflexivity.
-  Qed.
-  
-  Lemma eq_idx {I: Set} {A1 A2 : I -> Set} (Heq: A1 = A2)
-    (i: I): A1 i = A2 i.
-  Proof.
-    rewrite Heq. reflexivity.
-  Defined.
-  
-  (*A version of [f_equal] for W types*)
-  Lemma w_eq: forall {I: Set} (A1 A2: I -> Set) (Heq: A1 = A2)
-    (B1: forall i: I, I -> A1 i -> Set)
-    (B2: forall i: I, I -> A2 i -> Set),
-    (forall i j a, B1 i j a = B2 i j (scast (eq_idx Heq i) a)) ->
-    W I A1 B1 = W I A2 B2.
-  Proof.
-    intros.
-    subst. f_equal. repeat(apply functional_extensionality_dep; intros).
-    rewrite H. reflexivity.
-  Qed.
-
-  Lemma eq_idx' {I: Set} {A: I -> Set} (B: forall i: I, I -> A i -> Set) {i j: I}
-    (a1 a2: A i) (Heq: a1 = a2) : B i j a1 = B i j a2.
-  Proof.
-    rewrite Heq. reflexivity.
-  Defined.
-
-  (*A version of [f_equal] for mkW*)
-  Lemma mkW_eq: forall {I: Set} (A: I -> Set) (B: forall i: I, I -> A i -> Set) (i: I)
-    (a1 a2: A i) (Heq: a1 = a2) (f1: forall j, B i j a1 -> W I A B j)
-    (f2: forall j, B i j a2 -> W I A B j),
-    (forall j b, f1 j b = f2 j (scast (eq_idx' B a1 a2 Heq) b)) ->
-    mkW I A B i a1 f1 = mkW I A B i a2 f2.
-  Proof.
-    intros. subst. f_equal. repeat (apply functional_extensionality_dep; intros).
-    rewrite H. reflexivity.
-  Qed. 
-  
-End Cast.
-
-(*Reasoning about equality of [mk_adts]*)
-
-(*We will have to reason about the (ts, tys) pairs that appear as (non-recursive)
-  arguments in ADT constructors. We define the relevant parts below:*)
-Definition vty_ts_pair (t: vty) : option (typesym * list vty) :=
-  match t with
-  | vty_cons ts vs => Some (ts, vs)
-  | _ => None
-  end.
-
-Definition funsym_ts_pairs m (f: funsym) : list (typesym * list vty) :=
-  CommonOption.omap vty_ts_pair (get_nonind_vtys m (s_args f)).
-
-Definition adt_ts_pairs m a : list (typesym * list vty) :=
-  concat (map (funsym_ts_pairs m) (adt_constr_list a)).
-
-Definition mut_ts_pairs m := concat (map (adt_ts_pairs m) m).
-
-(*This is the key lemma that lets us change the intepretation of an [adt_rep]:
-  if the two interpretations agree on all types in the constructors of [m].*)
-Lemma mk_adts_ext v a1 a2 m
-  (Ht: forall ts tys, In (ts, tys) (mut_ts_pairs m) -> a1 ts tys = a2 ts tys):
-  mk_adts v a1 m = mk_adts v a2 m.
-Proof.
-  unfold mk_adts.
-  assert (Hcbase: forall c a, In a m -> constr_in_adt c a -> 
-    build_constr_base v a1 m c = build_constr_base v a2 m c).
-  {
-    intros c a a_in c_in.
-    unfold build_constr_base, build_vty_base.
-    f_equal.
-    apply list_eq_ext'; rewrite !length_map; auto.
-    intros n d Hn.
-    rewrite -> !map_nth_inbound with (d2:=vty_int) by assumption.
-    unfold vty_to_set.
-    (*Here, we use the assumption*)
-    destruct (List.nth n (get_nonind_vtys m (s_args c)) vty_int) as [| | | ts vs] eqn : Hty; auto.
-    apply Ht. unfold mut_ts_pairs. rewrite in_concat. exists ((adt_ts_pairs m) a).
-    split; [rewrite in_map_iff; eauto|].
-    unfold adt_ts_pairs. rewrite in_concat. exists (funsym_ts_pairs m c).
-    rewrite in_map_iff. split; [exists c; split; auto; apply constr_in_adt_eq; auto|].
-    unfold funsym_ts_pairs. rewrite in_omap_iff. exists (vty_cons ts vs).
-    split; auto. rewrite <- Hty. apply nth_In. auto.
-  }
-  assert (Hbase': 
-    forall a l, In a m -> 
-    (forall x : funsym, in_bool_ne funsym_eq_dec x l -> constr_in_adt x a) ->
-    build_base v a1 m l = build_base v a2 m l).
-  {
-    intros a l a_in Hall.
-    induction l as [x | x l IH]; simpl in *.
-    - apply Hcbase with (a:=a); auto. apply Hall. destruct (funsym_eq_dec x x); auto.
-    - f_equal.
-      + apply Hcbase with (a:=a); auto. apply Hall. destruct (funsym_eq_dec x x); auto.
-      + apply IH. intros y Hiny. apply Hall. rewrite -> Hiny, orb_true_r. auto.
-  }
-  assert (Hbase: forall a : alg_datatype, In a m -> 
-    build_base v a1 m (adt_constrs a) = build_base v a2 m (adt_constrs a)).
-  {
-    intros a a_in.
-    apply Hbase' with (a:=a); auto.
-  }
-  assert (Heq: (fun n : finite (Datatypes.length m) => build_base v a1 m (adt_constrs (fin_nth m n))) =
-    (fun n : finite (Datatypes.length m) => build_base v a2 m (adt_constrs (fin_nth m n)))).
-  {
-    apply functional_extensionality. intros x.
-    pose proof (fin_nth_in _ x) as Hin.
-    apply Hbase; auto.
-  }
-  apply w_eq with (Heq:=Heq).
-  (*Now prove second part equiv*)
-  intros i j a.
-  pose proof (fin_nth_in m i) as Hina.
-  generalize dependent (eq_idx Heq i). clear Heq.
-  generalize dependent (fin_nth m i).
-  (*Again, need to generalize (adt_constrs a)*)
-  intros a b a_in Heq.
-  set (l := adt_constrs a) in *.
-  assert (Hall: forall (x: funsym), in_bool_ne funsym_eq_dec x l -> constr_in_adt x a).
-  { intros x. auto. }
-  induction l as [x | x l IH]; simpl in *; auto.
-  assert (Heq1: build_constr_base v a1 m x = build_constr_base v a2 m x).
-  { apply Hcbase with (a:=a); auto. apply Hall. destruct (funsym_eq_dec x x); auto. }
-  assert (Heq2: build_base v a1 m l = build_base v a2 m l).
-  { apply Hbase' with (a:=a); auto. intros y Hiny. apply Hall. rewrite -> Hiny, orb_true_r; auto. }
-  destruct b.
-  - (*Can't rewrite directly so we destruct and derive contradiction*)
-    destruct (scast Heq _) eqn : Hs; auto.
-    exfalso. rewrite -> scast_left with (H1:=Heq1) in Hs; [discriminate|]; auto.
-  - destruct (scast Heq _) eqn : Hs; auto.
-    { exfalso. rewrite -> scast_right with (H2:=Heq2) in Hs; [discriminate|]; auto. }
-    rewrite -> scast_right with (H2:=Heq2) in Hs; auto.
-    inversion Hs; subst.
-    apply IH.
-    intros y Hiny. apply Hall. rewrite -> Hiny, orb_true_r; auto.
-Qed.
-
-End Ext.
-
 Ltac destruct_list :=
   match goal with
   | |- context [ match ?l with | nil => ?x1 | a :: b => ?x2 end] =>
@@ -1099,7 +932,7 @@ Definition var_map : typevar -> Set :=
   this works*)
 Definition typesym_map : typesym -> list vty -> Set :=
   fun ts vs =>
-    domain (s_cons ts (List.map sigma vs)).
+    domain (s_cons ts (map sigma vs)).
 
 (*A nicer interface for the ADT*)
 
@@ -1189,7 +1022,7 @@ Definition args_to_constr_base (a: arg_list domain sigma_args):
 (*We assume that the domain of all adts is given by [adt_rep]
   (which we will require of all possible valid domains)*)
 Variable dom_adts: forall (a: alg_datatype) (m_in: mut_in_ctx m gamma) 
-  (Hin: adt_in_mut a m) (srts_len: length srts = length (m_params m)),
+  (Hin: adt_in_mut a m),
   domain (s_cons (adt_name a) srts) =
   adt_rep a Hin.
 
@@ -1198,12 +1031,12 @@ Lemma dom_adts_fin: forall (x: finite (length adts)),
   domain (s_cons (adt_name (fin_nth adts x)) srts) =
   mk_adts var_map typesym_map adts x.
 Proof.
-  intros. rewrite dom_adts; auto. apply In_in_bool. apply fin_nth_in.
+  intros. rewrite dom_adts. apply In_in_bool. apply fin_nth_in.
   intros Hin.
   unfold adt_rep.
   f_equal.
   rewrite get_idx_fin. reflexivity.
-  apply (adts_nodups gamma_valid m_in).
+  apply (adts_nodups gamma_valid m_in). assumption.
 Qed.
 
 (*To build the recursive instance function, we do the following: 
@@ -1283,6 +1116,30 @@ Definition args_to_ind_base (a: arg_list domain sigma_args) :
   an [adt_rep] to an element of the appropriate domain. We need
   a few lemmas to do this, mainly about substitution. *)
 
+(*Substitute fun/pred symbol args with sorts for its parameters*)
+Definition sym_sigma_args (sym: fpsym) (s: list Types.sort) : list Types.sort :=
+  ty_subst_list_s (s_params sym) s (s_args sym).
+
+(*And likewise for function return type*)
+Definition funsym_sigma_ret (f: funsym) (s: list Types.sort) : Types.sort :=
+  ty_subst_s (s_params f) s (f_ret f).
+
+Lemma adt_typesym_funsym:
+  s_cons (adt_name t) srts = funsym_sigma_ret c srts.
+Proof.
+  unfold funsym_sigma_ret. unfold ty_subst_s; simpl.
+  rewrite (adt_constr_ret gamma_valid m_in t_in); auto.
+  simpl. f_equal.
+  rewrite <- map_ty_subst_var_sort at 1.
+  2: symmetry; apply srts_len.
+  rewrite <- map_map.
+  apply map_ext_in_iff.
+  intros. simpl. unfold ty_subst_s. simpl. f_equal. f_equal. symmetry.
+  apply (adt_constr_params gamma_valid m_in t_in c_in).
+  clear -m. destruct m; simpl.
+  apply /nodup_NoDup. apply m_nodup.
+Qed. 
+
 Lemma sigma_args_eq: sym_sigma_args c srts = sigma_args.
 Proof.
   unfold sym_sigma_args. unfold sigma_args.
@@ -1317,8 +1174,8 @@ Definition constr_rep_dom (a: arg_list domain (sym_sigma_args c srts)) :
   domain (funsym_sigma_ret c srts) := 
   scast 
     (*equality proof*)
-    (etrans (esym (dom_adts t m_in t_in srts_len)) 
-      (f_equal domain (adt_typesym_funsym gamma_valid m_in t_in c_in srts_len))
+    (etrans (esym (dom_adts t m_in t_in)) 
+      (f_equal domain adt_typesym_funsym)
     ) 
     (*the real value*)
     (constr_rep a).
@@ -1712,7 +1569,7 @@ Proof.
         destruct (ts_in_mut_list_ex t0 m Hind). destruct a.
         assert (domain (sigma (vty_cons t0 l0)) = adt_rep x H0). {
           rewrite sigma_cons. rewrite split_arg_func_lemma2.
-          rewrite H. apply dom_adts. exact m_in. exact srts_len. exact t0. exact Hl0.
+          rewrite H. apply dom_adts. exact m_in. exact t0. exact Hl0.
         }
         apply (exist _ (HL_cons domain (sigma (vty_cons t0 l0)) _ 
           (get_ind_arg t0 l0 l x H0 H Hl0 H1 i Hi) atl)).
@@ -1873,7 +1730,7 @@ End Constr.
   semantics do not need to directly reason about finite types,
   W-types, or the explicit functions above.*)
 Variable dom_adts: forall (a: alg_datatype) (m_in: mut_in_ctx m gamma) 
-(Hin: adt_in_mut a m) (srts_len: length srts = length (m_params m)) ,
+(Hin: adt_in_mut a m)  ,
 domain (s_cons (adt_name a) srts) =
 adt_rep a Hin.
 
@@ -2141,12 +1998,10 @@ Lemma constr_rep_change_gamma {gamma1 gamma2: context}
   (t_in : adt_in_mut t m)
   (c: funsym)
   (c_in: constr_in_adt c t)
-  (adts1: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) (Hin : adt_in_mut a m)
-    (srts_length: length srts = length (m_params m)),
+  (adts1: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) (Hin : adt_in_mut a m),
   domain domain_aux (s_cons (adt_name a) srts) =
   adt_rep m srts domain_aux a Hin)
-  (adts2: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) (Hin : adt_in_mut a m)
-    (srts_length: length srts = length (m_params m)),
+  (adts2: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) (Hin : adt_in_mut a m),
   domain domain_aux (s_cons (adt_name a) srts) =
   adt_rep m srts domain_aux a Hin)
   (a: arg_list (domain domain_aux) (sym_sigma_args c srts)):
@@ -2175,11 +2030,11 @@ Lemma find_constr_rep_change_gamma {gamma1 gamma2: context}
   (domain_aux : Types.sort -> Set) (t : alg_datatype)
   (t_in : adt_in_mut t m)
   (dom_adts1 : forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) 
-              (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
+              (Hin : adt_in_mut a m),
               domain domain_aux (s_cons (adt_name a) srts) =
               adt_rep m srts domain_aux a Hin)
   (dom_adts2 : forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) 
-              (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
+              (Hin : adt_in_mut a m),
               domain domain_aux (s_cons (adt_name a) srts) =
               adt_rep m srts domain_aux a Hin)
   (m_unif: uniform m)
@@ -2240,7 +2095,7 @@ Lemma constr_rep_inj_iff_strong {gamma} (gamma_valid: valid_context gamma) {m a 
   {srts} (srts_len: length srts = length (m_params m)) (domain_aux: Types.sort -> Set)
   (dom_adts : forall a : alg_datatype,
                      mut_in_ctx m gamma ->
-                     forall (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
+                     forall Hin : adt_in_mut a m,
                      domain domain_aux (s_cons (adt_name a) srts) =
                      adt_rep m srts domain_aux a Hin)
   (a1: arg_list (domain domain_aux) (sym_sigma_args c1 srts))
@@ -2264,7 +2119,7 @@ Lemma constr_rep_inj_iff {gamma} (gamma_valid: valid_context gamma) {m a c}
   {srts} (srts_len: length srts = length (m_params m)) (domain_aux: Types.sort -> Set)
   (dom_adts : forall a : alg_datatype,
                      mut_in_ctx m gamma ->
-                     forall (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
+                     forall Hin : adt_in_mut a m,
                      domain domain_aux (s_cons (adt_name a) srts) =
                      adt_rep m srts domain_aux a Hin)
   (a1 a2: arg_list (domain domain_aux) (sym_sigma_args c srts)):
@@ -2288,6 +2143,70 @@ Proof.
 Qed.
 (*We need some axioms for testing: dependent functional extensionality,
   and for mutually recursive types, Uniqueness of Identity Proofs*)
+
+(* Mutual recursion means we need additional typecasts and axioms
+  to deal with the dependent functions. We do that here. Since this is
+  only for testing, we don't introduce any axioms into the semantics*)
+
+  Section Cast.
+
+  (*Some results about casts require UIP*)
+  
+  (*We need UIP, so we assume it directly (rather than something like
+    excluded middle or proof irrelevance, which implies UIP)*)
+  
+  Lemma scast_left: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: Either A B = Either A' B') x,
+    scast H3 (Left A B x) = Left A' B' (scast H1 x).
+  Proof.
+    intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect.
+    assert (H3 = erefl) by apply UIP.
+    rewrite H. reflexivity.
+  Qed.
+  
+  Lemma scast_right: forall {A B A' B': Set} (H1: A = A') (H2: B = B') (H3: Either A B = Either A' B') x,
+  scast H3 (Right A B x) = Right A' B' (scast H2 x).
+  Proof.
+    intros. subst. unfold scast, eq_rec_r, eq_rec, eq_rect. simpl.
+    assert (H3 = erefl) by apply UIP.
+    rewrite H. reflexivity.
+  Qed.
+  
+  Lemma eq_idx {I: Set} {A1 A2 : I -> Set} (Heq: A1 = A2)
+    (i: I): A1 i = A2 i.
+  Proof.
+    rewrite Heq. reflexivity.
+  Defined.
+  
+  (*A version of [f_equal] for W types*)
+  Lemma w_eq: forall {I: Set} (A1 A2: I -> Set) (Heq: A1 = A2)
+    (B1: forall i: I, I -> A1 i -> Set)
+    (B2: forall i: I, I -> A2 i -> Set),
+    (forall i j a, B1 i j a = B2 i j (scast (eq_idx Heq i) a)) ->
+    W I A1 B1 = W I A2 B2.
+  Proof.
+    intros.
+    subst. f_equal. repeat(apply functional_extensionality_dep; intros).
+    rewrite H. reflexivity.
+  Qed.
+
+  Lemma eq_idx' {I: Set} {A: I -> Set} (B: forall i: I, I -> A i -> Set) {i j: I}
+    (a1 a2: A i) (Heq: a1 = a2) : B i j a1 = B i j a2.
+  Proof.
+    rewrite Heq. reflexivity.
+  Defined.
+
+  (*A version of [f_equal] for mkW*)
+  Lemma mkW_eq: forall {I: Set} (A: I -> Set) (B: forall i: I, I -> A i -> Set) (i: I)
+    (a1 a2: A i) (Heq: a1 = a2) (f1: forall j, B i j a1 -> W I A B j)
+    (f2: forall j, B i j a2 -> W I A B j),
+    (forall j b, f1 j b = f2 j (scast (eq_idx' B a1 a2 Heq) b)) ->
+    mkW I A B i a1 f1 = mkW I A B i a2 f2.
+  Proof.
+    intros. subst. f_equal. repeat (apply functional_extensionality_dep; intros).
+    rewrite H. reflexivity.
+  Qed. 
+  
+End Cast.
 
 (* We give many unit tests of increasing complexity to validate the encoding
   and ensure that the encodings can be proved equivalent to simpler, expected forms.*)

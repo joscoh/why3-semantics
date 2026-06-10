@@ -16,6 +16,7 @@ Require Import Denotational2.
 Require Import GenElts.
 Require Import Alpha.
 Require Import Task.
+Require Import ADTInd.
 Set Bullet Behavior "Strict Subproofs".
 
 
@@ -218,6 +219,15 @@ Proof.
   intros; subst; auto.
 Qed.
 
+Lemma scast_uip_eq' {A B: Set} (H1 H2: A = B) x y:
+  x = y ->
+  scast H1 x = scast H2 y.
+Proof.
+  intros. subst.
+  assert (H2 = eq_refl) by apply UIP.
+  subst; reflexivity.
+Qed.
+
 (*Prove soundness*)
 Lemma induction_trans_sound: sound_trans_closed induction_trans.
 Proof.
@@ -261,6 +271,18 @@ Proof.
   assert (Heq: v_subst vt (vty_cons (adt_name a) vs) = s_cons (adt_name a) (map (v_subst vt) vs)). {
     apply sort_inj; simpl. rewrite !map_map. auto.
   }
+  set (d':= scast (adts pdf m (map (v_subst vt) vs) a m_in a_in) (dom_cast (dom_aux pd) Heq d)).
+  assert (d = scast (eq_trans (eq_sym (adts pdf m (map (v_subst vt) vs) a m_in a_in))
+    (eq_sym (f_equal (domain (dom_aux pd)) Heq))) d'). {
+      unfold d'. unfold dom_cast. rewrite !scast_scast.
+      (*Could do without UIP but ok*)
+      rewrite scast_refl_uip. auto.
+  }
+  rewrite H2. clear H2.
+  match goal with
+  | |- is_true (formula_rep ?val ?pd ?pdf ?vt ?pf ?vv ?f ?Hty) => generalize dependent Hty end.
+  generalize dependent (eq_trans (eq_sym (adts pdf m (map (v_subst vt) vs) a m_in a_in))
+  (eq_sym (f_equal (domain (dom_aux pd)) Heq))).
   assert (Hlen: Datatypes.length (map (v_subst vt) vs) = Datatypes.length (m_params m)).
   {
     destruct t_wf. simpl_task.
@@ -272,16 +294,16 @@ Proof.
     apply (adt_args gamma_valid m_in a_in).
   }
   (*Now, we will apply our induction theorem for ADTs*)
-  apply (adt_ind gamma_valid pd pf m_in Hlen
+  apply (adt_rep_ind gamma_valid pdf m m_in (map (v_subst vt) vs) Hlen
     (fun t t_in a => 
-      forall Hty,
-      formula_rep gamma_valid pd pf vt 
-        (substi pd vt vv (x, vty_cons (adt_name t) vs) a) goal Hty)) with (t:=a); auto.
+      forall Heq Hty,
+      formula_rep gamma_valid pd pdf vt pf 
+        (substi pd vt vv (x, vty_cons (adt_name t) vs) (scast Heq a)) goal Hty)).
   (*And now we prove, for every ADT in m (a is the only one)
     and every rep, for every constr, if this holds inductively for recursive
     arguments, then it holds for the constr.
     We use the constr case assumptions from the resulting task goals*)
-  intros t t_in y c c_in args Hy IH Hty1.
+  intros t t_in y c c_in args Hy IH Heq1 Hty1.
   (*First, show that t = a*)
   assert (t = a). {
     unfold adt_in_mut in t_in. clear -H0 t_in.
@@ -304,7 +326,7 @@ Proof.
   destruct H as [Hwf Hval].
   specialize (Hval gamma_valid Hwf).
   unfold log_conseq in Hval.
-  specialize (Hval pd pf pf_full).
+  specialize (Hval pd pdf pf pf_full).
   prove_hyp Hval.
   {
     intros d1 Hd1.
@@ -320,7 +342,7 @@ Proof.
   }
   unfold constr_case in Hconstrty |- *.
   apply fforalls_typed_inv in Hconstrty.
-  destruct Hconstrty as [Hihty Hallval]. Opaque aset_union. simpl_task.
+  destruct Hconstrty as [Hihty Hallval]. simpl_task.
   erewrite fforalls_rep'.
   Unshelve. 2: auto.
   rewrite simpl_all_dec. intros.
@@ -402,8 +424,7 @@ Proof.
              (ty_subst_list' (s_params c) vs (s_args c))))) (vty_cons (adt_name a) vs)).
     {
       apply constr_case_goal_ty with(m:=m); auto.
-      assert (Hlen':=Hlen).
-      rewrite length_map in Hlen'; auto.
+      rewrite length_map in Hlen; auto.
     }
     erewrite safe_sub_f_rep.
     Unshelve.
@@ -414,9 +435,11 @@ Proof.
     (*Evaluate constr application and show equal*)
     simpl.
     simpl_rep_full.
-    rewrite (constrs_eq gamma_valid pd pf m_in a_in c_in Hlen).
-    unfold cast_dom_vty. rewrite !dom_cast_compose.
-    rewrite dom_cast_refl.
+    rewrite (constrs gamma_valid pd pdf pf m a c m_in a_in c_in _ Hlen).
+    unfold constr_rep_dom.
+    unfold cast_dom_vty, dom_cast.
+    rewrite !scast_scast.
+    apply scast_uip_eq'.
     f_equal.
     (*Need to show these arg_lists equal, we do so extensionally*)
     eapply hlist_ext_eq with(d:=s_int)(d':=dom_int pd).
@@ -430,8 +453,7 @@ Proof.
       apply funsym_subst_eq; auto.
       apply s_params_Nodup.
       rewrite (adt_constr_params gamma_valid m_in a_in c_in);
-      assert (Hlen':=Hlen).
-      rewrite length_map in Hlen'; auto.
+      rewrite length_map in Hlen; auto.
     }
     assert (Hty2: term_has_type gamma
     (nth i
@@ -460,7 +482,7 @@ Proof.
         auto. apply nth_In; auto.
     }
     erewrite (get_arg_list_hnth pd vt c vs _
-     (term_rep gamma_valid pd pf vt
+     (term_rep gamma_valid pd pdf vt pf
         (substi_mult pd vt vv
            (combine
               (gen_strs (Datatypes.length (s_args c))
@@ -495,7 +517,11 @@ Proof.
       apply NoDup_combine_l.
       apply gen_strs_nodup.
     }
-    rewrite hnth_cast_arg_list, rewrite_dom_cast, !dom_cast_compose, dom_cast_refl.
+    rewrite !dom_cast_compose.
+    rewrite hnth_cast_arg_list.
+    unfold dom_cast.
+    rewrite !scast_scast.
+    rewrite scast_refl_uip. 
     reflexivity.
   - (*Last part: use the IH to prove that all of the
     constructor recursive arguments (syntactically) hold*)
@@ -537,7 +563,7 @@ Proof.
       rewrite <- Hithty. 
       apply v_subst_cons.
     }
-    specialize (IH Heq2 Hi Hty1).
+    specialize (IH Heq2 Hi Heq1 Hty1).
     revert IH.
     apply prove_eq_bool.
     (*And now, once again, we have to prove equality of the
@@ -561,8 +587,7 @@ Proof.
         * simpl. unfold typesyms_of_mut. rewrite in_map_iff.
           exists a; split; auto. clear -a_in. apply in_bool_In in a_in; auto.
       + rewrite (adt_args gamma_valid m_in a_in); auto.
-        assert (Hlen':=Hlen).
-        rewrite length_map in Hlen'; auto.
+        rewrite length_map in Hlen; auto.
       + rewrite <- Forall_forall; auto.
     }
     erewrite safe_sub_f_rep.
@@ -608,7 +633,8 @@ Proof.
     Unshelve. all: auto.
     2: apply NoDup_combine_l, gen_strs_nodup.
     rewrite hnth_cast_arg_list.
-    rewrite rewrite_dom_cast, !dom_cast_compose. apply dom_cast_eq.
+    unfold dom_cast. rewrite !scast_scast.
+    apply scast_eq_uip.
 Qed.
 
 Require Import NatDed.

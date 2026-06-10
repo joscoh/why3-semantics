@@ -1782,25 +1782,6 @@ Proof.
   induction l; simpl; auto. rewrite IHl; auto. lia.
 Qed.
 
-Lemma list_map_map_In_le {A: Type} (f: A -> nat) {l: list A} {x: A}:
-  In x l ->
-  f x <= list_max (map f l).
-Proof.
-  intros Hin.
-  pose proof (list_max_le (map f l) (list_max (map f l))) as [Hmax _].
-  specialize (Hmax (ltac:(lia))).
-  rewrite Forall_map, Forall_forall in Hmax.
-  auto.
-Qed. 
-
-Lemma in_sum_le {A: Type} (f: A -> nat) {l: list A} {x: A}:
-  In x l ->
-  f x <= sum (map f l).
-Proof.
-  induction l as [| h t IH]; simpl; auto; [contradiction|].
-  intros [Hh | Ht]; subst; try lia. specialize (IH Ht); lia.
-Qed.
-
 End Sum.
 
 Section Concat.

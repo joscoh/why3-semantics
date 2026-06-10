@@ -822,7 +822,7 @@ Definition mut_valid_check (m: mut_adt) : bool :=
   all (adt_valid_type_check) (typs m) &&
   all (adt_inhab gamma) (typs m) &&
   valid_mut_rec_check m &&
-  uniform m && nonnest m.
+  uniform m.
 
 Lemma mut_valid_check_spec (m: mut_adt) :
   reflect (mut_valid gamma m) (mut_valid_check m).
@@ -835,7 +835,6 @@ Proof.
   - apply forallb_ForallP=> y Hiny.
     by apply idP.
   - by apply valid_mut_rec_check_spec.
-  - by apply idP.
   - by apply idP.
 Qed.
 

@@ -10,7 +10,8 @@ Set Bullet Behavior "Strict Subproofs".
 Section TermsToHlist.
 
 Context {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom)
-  (pf: pi_funpred gamma_valid pd) (vt: val_typevar).
+  (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
+  (vt: val_typevar).
 
 Section FixV.
 
@@ -21,7 +22,7 @@ Equations terms_to_hlist (ts: list term) (tys: list vty)
   arg_list (domain (dom_aux pd)) (map (v_subst vt) tys) :=
 terms_to_hlist nil nil Hty := HL_nil _;
 terms_to_hlist (t :: ts) (ty :: tys) Hty :=
-  HL_cons _ _ _ (term_rep gamma_valid pd pf vt v t ty (Forall2_inv_head Hty)) 
+  HL_cons _ _ _ (term_rep gamma_valid pd pdf vt pf v t ty (Forall2_inv_head Hty)) 
     (terms_to_hlist ts tys (Forall2_inv_tail Hty)).
 (*Equations is very nice*)
 
@@ -98,7 +99,7 @@ Qed.
 (*Express [get_arg_list] via [terms_to_hlist]*)
 Lemma get_arg_list_eq (f: funsym) (ty: vty) (tys: list vty) (tms: list term) 
   (Hty: term_has_type gamma (Tfun f tys tms) ty) Hp Hlents Hlenvs Hall Htms constrs_len:
-  get_arg_list pd vt tys tms (term_rep gamma_valid pd pf vt v) Hp Hlents Hlenvs Hall =
+  get_arg_list pd vt tys tms (term_rep gamma_valid pd pdf vt pf v) Hp Hlents Hlenvs Hall =
   cast_arg_list  (eq_sym (sym_sigma_args_map vt f tys constrs_len))
     (terms_to_hlist tms ((ty_subst_list (s_params f) tys (s_args f))) Htms).
 Proof.
@@ -115,13 +116,18 @@ Proof.
     simpl.
     simp terms_to_hlist.
     rewrite cast_arg_list_cons.
-    erewrite IH. f_equal. rewrite rewrite_dom_cast. apply dom_cast_eq'.
-    apply term_rep_irrel.
+    erewrite IH. f_equal. unfold dom_cast.
+    repeat match goal with
+    | |- context [scast (f_equal _ ?Heq)] => generalize dependent Heq 
+    end.
+    intros Heq1 Heq2. assert (Heq1 = Heq2). { apply UIP_dec, sort_eq_dec. }
+    subst.
+    erewrite term_rep_irrel. reflexivity.
 Qed.
 
 Lemma fun_arg_list_eq (f: funsym) (ty: vty) (tys: list vty) (tms: list term) 
   (Hty: term_has_type gamma (Tfun f tys tms) ty) Htms constrs_len:
-  fun_arg_list pd vt f tys tms (term_rep gamma_valid pd pf vt v) Hty =
+  fun_arg_list pd vt f tys tms (term_rep gamma_valid pd pdf vt pf v) Hty =
   cast_arg_list  (eq_sym (sym_sigma_args_map vt f tys constrs_len))
     (terms_to_hlist tms ((ty_subst_list (s_params f) tys (s_args f))) Htms).
 Proof.
@@ -151,7 +157,7 @@ Lemma terms_to_hlist_nth (tms: list term) (tys: list vty) (Hty: Forall2 (term_ha
   (i: nat) (Hi: i < length tys):
   hnth i (terms_to_hlist tms tys Hty) s_int (dom_int pd) =
   dom_cast (dom_aux pd) (terms_to_hlist_eq Hi) 
-    (term_rep gamma_valid pd pf vt v (nth i tms tm_d) (nth i tys vty_int) (terms_to_hlist_nth_ty Hi Hty)).
+    (term_rep gamma_valid pd pdf vt pf v (nth i tms tm_d) (nth i tys vty_int) (terms_to_hlist_nth_ty Hi Hty)).
 Proof.
   generalize dependent (terms_to_hlist_eq Hi).
   generalize dependent (terms_to_hlist_nth_ty Hi Hty).
@@ -209,11 +215,13 @@ End TermsToHlist.
 (*Iterated version of forall, let, and*)
 Section Iter.
 
-Context {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom).
+Context {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom)
+  (pdf: pi_dom_full gamma pd)
+  (vt: val_typevar).
 
 Notation domain := (domain (dom_aux pd)).
-Notation term_rep := (term_rep gamma_valid pd).
-Notation formula_rep := (formula_rep gamma_valid pd).
+Notation term_rep := (term_rep gamma_valid pd pdf vt).
+Notation formula_rep := (formula_rep gamma_valid pd pdf vt).
 
 
 (*First, we define iterated substitution in 2 forms: 
@@ -223,7 +231,7 @@ Section IterSub.
 
 (*Substitute in a bunch of values for a bunch of variables,
   using an hlist to ensure they have the correct type*)
-Fixpoint substi_mult vt (vv: val_vars pd vt) 
+Fixpoint substi_mult (vv: val_vars pd vt) 
   (vs: list vsymbol)
   (vals: arg_list domain
     (map (v_subst vt) (map snd vs))) :
@@ -232,7 +240,7 @@ Fixpoint substi_mult vt (vv: val_vars pd vt)
     (map (v_subst vt) (map snd l)) -> val_vars pd vt with
   | nil => fun _ => vv
   | x :: tl => fun h' => 
-     (substi_mult vt (substi pd vt vv x (hlist_hd h')) tl (hlist_tl h')) 
+     (substi_mult (substi pd vt vv x (hlist_hd h')) tl (hlist_tl h')) 
   end) vals.
 
 (*Lemmas about this*)
@@ -244,12 +252,12 @@ Proof.
   rewrite map_map, map_nth_inbound with(d2:=d2); auto.
 Qed.
 
-Lemma substi_mult_notin vt (vv: val_vars pd vt) 
+Lemma substi_mult_notin (vv: val_vars pd vt) 
 (vs: list vsymbol)
 (vals: arg_list domain (map (v_subst vt) (map snd vs)))
 (x: vsymbol):
 ~ In x vs ->
-substi_mult vt vv vs vals x = vv x.
+substi_mult vv vs vals x = vv x.
 Proof.
   revert vv.
   induction vs; simpl; intros; auto.
@@ -258,13 +266,13 @@ Proof.
   not_or Hax. vsym_eq x a.
 Qed.
 
-Lemma substi_mult_nth' vt (vv: val_vars pd vt) 
+Lemma substi_mult_nth' (vv: val_vars pd vt) 
 (vs: list vsymbol)
 (vals: arg_list domain (map (v_subst vt) (map snd vs)))
 (i: nat)
 (Hi: i < length vs)
 (Hnodup: NoDup vs):
-substi_mult vt vv vs vals (nth i vs vs_d) = 
+substi_mult vv vs vals (nth i vs vs_d) = 
 dom_cast (dom_aux pd)
   (substi_mult_nth_lemma _ _ vs i Hi s_int vs_d) 
   (hnth i vals s_int (dom_int pd)).
@@ -287,13 +295,13 @@ Qed.
 
 (*For dependent type issues that make Coq completely
   useless:*)
-Lemma substi_mult_nth_eq vt (vv : val_vars pd vt)
+Lemma substi_mult_nth_eq (vv : val_vars pd vt)
 (vs : list vsymbol)
   (vals : arg_list (domain) (map (v_subst vt) (map snd vs)))
   (i : nat) (Hi : i < Datatypes.length vs) x
   (Heq: x = nth i vs vs_d):
   NoDup vs ->
-  substi_mult vt vv vs vals x =
+  substi_mult vv vs vals x =
   dom_cast (dom_aux pd)
     (eq_trans (substi_mult_nth_lemma 
       (v_subst vt) snd vs i Hi s_int vs_d) (f_equal (fun x => v_subst vt (snd x)) (eq_sym Heq))) 
@@ -304,7 +312,7 @@ Qed.
 
 (*Next we give the valuation for an iterated let. This time,
   we don't need to worry about hlists*)
-Fixpoint substi_multi_let pf vt (vv: val_vars pd vt) 
+Fixpoint substi_multi_let pf (vv: val_vars pd vt) 
   (vs: list (vsymbol * term)) 
     (Hall: Forall (fun x => term_has_type gamma (snd x) (snd (fst x))) vs) :
   val_vars pd vt := 
@@ -314,20 +322,20 @@ Fixpoint substi_multi_let pf vt (vv: val_vars pd vt)
     with
     | nil => fun _ => vv
     | (v, t) :: tl => fun Hall =>
-      substi_multi_let pf vt
+      substi_multi_let pf
         (substi pd vt vv v 
-          (term_rep pf vt vv t (snd v) 
+          (term_rep pf vv t (snd v) 
         (Forall_inv Hall))) tl (Forall_inv_tail Hall)
     end Hall.
 
 (*And lemmas*)
-Lemma substi_multi_let_notin pf vt
+Lemma substi_multi_let_notin pf
   (vv: val_vars pd vt)
   (vs: list (vsymbol * term))
   (v: vsymbol)
   Hall:
   ~ In v (map fst vs) ->
-  substi_multi_let pf vt vv vs Hall v =
+  substi_multi_let pf vv vs Hall v =
   vv v.
 Proof.
   intros. generalize dependent vv. revert Hall. 
@@ -337,7 +345,7 @@ Proof.
 Qed. 
 
 (*Should rename*)
-Lemma substi_mult_nth'' vt (vv: val_vars pd vt) 
+Lemma substi_mult_nth'' (vv: val_vars pd vt) 
 (vs: list vsymbol)
 (vals: arg_list domain (map (v_subst vt) (map snd vs)))
 (i: nat)
@@ -346,7 +354,7 @@ Lemma substi_mult_nth'' vt (vv: val_vars pd vt)
 (*Doesn't work without type annotation*)
 let H : v_subst vt (snd (nth i vs vs_d)) = v_subst vt (snd x) 
   := (f_equal (fun y => (v_subst vt (snd y))) (eq_sym Heqx)) in
-substi_mult vt vv vs vals x = 
+substi_mult vv vs vals x = 
 dom_cast (dom_aux pd)
   (eq_trans
     (substi_mult_nth_lemma _ _ vs i Hi s_int vs_d) 
@@ -374,7 +382,7 @@ Qed.
   time, so we cannot give a straightforward [nth] lemma.
   We instead need extensionality lemmas*)
 
-Lemma substi_multi_let_ext pf vt
+Lemma substi_multi_let_ext pf
 (vv1 vv2: val_vars pd vt)
 (vs: list (vsymbol * term))
 (Hn: NoDup (map fst vs))
@@ -382,8 +390,8 @@ Hall1 Hall2 x
 (Hin: In x (map fst vs))
 (Htms: forall x t, In t (map snd vs) -> aset_mem x (tm_fv t) ->
   vv1 x = vv2 x):
-substi_multi_let pf vt vv1 vs Hall1 x =
-substi_multi_let pf vt vv2 vs Hall2 x.
+substi_multi_let pf vv1 vs Hall1 x =
+substi_multi_let pf vv2 vs Hall2 x.
 Proof.
   revert Hall1 Hall2.
   generalize dependent vv2. revert vv1.
@@ -403,10 +411,9 @@ Proof.
       apply tm_change_vv. intros; apply (Htms _ t); auto.
     + apply (Htms _ t0); auto.
 Qed. 
-
+  
 Lemma substi_multi_let_change_pf
-(pf1 pf2: pi_funpred gamma_valid pd)
-(pf_eq: pf_same_constrs pf1 pf2) vt 
+(pf1 pf2: pi_funpred gamma_valid pd pdf) 
 (vv: val_vars pd vt)
 (vs: list (vsymbol * term))
 Hall
@@ -416,8 +423,8 @@ Hall
 (Hagree2: forall t f srts a, In t (map snd vs) -> funsym_in_tm f t ->
   funs gamma_valid pd pf1 f srts a = funs gamma_valid pd pf2 f srts a):
 forall x,
-substi_multi_let pf1 vt vv vs Hall x =
-substi_multi_let pf2 vt vv vs Hall x.
+substi_multi_let pf1 vv vs Hall x =
+substi_multi_let pf2 vv vs Hall x.
 Proof.
   intros x. revert Hall.
   revert vv.
@@ -429,11 +436,11 @@ Proof.
     + apply substi_multi_let_ext; auto.
       intros. unfold substi.
       vsym_eq x0 v.
-      f_equal. apply tm_change_pf; intros s srts a Hin; auto; 
+      f_equal. apply tm_change_pf; intros s srts a Hin; 
       [apply (Hagree1 t) | apply (Hagree2 t)]; auto.  
     + rewrite !substi_multi_let_notin; auto.
       unfold substi. vsym_eq x v. f_equal.
-      apply tm_change_pf; intros s srts a Hin; auto; 
+      apply tm_change_pf; intros s srts a Hin; 
       [apply (Hagree1 t) | apply (Hagree2 t)]; auto.
   - intros. apply (Hagree1 t0); auto.
   - intros. apply (Hagree2 t0); auto.
@@ -445,9 +452,9 @@ End IterSub.
 
 (*NOTE: what is the difference between [substi_mult] and [val_with_args]? Are they redundant?*)
 (*Yes, this lemma shows that they are the same. oops (TODO: remove one)*)
-Lemma substi_mult_val_with_args vt vv vs al x:
+Lemma substi_mult_val_with_args vv vs al x:
   NoDup vs ->
-  substi_mult vt vv vs al x = val_with_args pd vt vv vs al x.
+  substi_mult vv vs al x = val_with_args pd vt vv vs al x.
 Proof.
   intros Hn.
   destruct (in_dec vsymbol_eq_dec x vs) as [Hin| Hnotin].
@@ -461,12 +468,12 @@ Proof.
 Qed.
 
 Lemma substi_mult_let_equiv
-    pf vt (vv: val_vars pd vt) (vs: list (vsymbol * term))
+    pf (vv: val_vars pd vt) (vs: list (vsymbol * term))
   (Hall: Forall (fun x => term_has_type gamma (snd x) (snd (fst x))) vs)
   (Hdisj: forall v t, In v (map fst vs) -> In t (map snd vs) -> ~ aset_mem v (tm_fv t))
   (Hall2: Forall2 (fun (t : term) (ty : vty) => term_has_type gamma t ty) (map snd vs) (map snd (map fst vs))) x:
-  substi_multi_let pf vt vv vs Hall x =
-  substi_mult vt vv (map fst vs) (terms_to_hlist gamma_valid pd pf vt vv (map snd vs) (map snd (map fst vs))
+  substi_multi_let pf vv vs Hall x =
+  substi_mult vv (map fst vs) (terms_to_hlist gamma_valid pd pdf pf vt vv (map snd vs) (map snd (map fst vs))
     Hall2) x.
 Proof.
   (*Have to prove by induction because we didn't prove anything about values of [substi_multi_let]*)
@@ -482,7 +489,7 @@ Proof.
   exfalso. apply (Hdisj v1 tm); auto.
 Qed. 
 
-Variable  (pf: pi_funpred gamma_valid pd) (vt: val_typevar).
+Variable  (pf: pi_funpred gamma_valid pd pdf).
 
 (*Then we define iterated logical operators*)
 
@@ -516,16 +523,16 @@ Lemma fforalls_rep (vv: val_vars pd vt)
   (vs: list vsymbol) (f: formula) 
   (Hval: formula_typed gamma f)
   (Hall: Forall (fun x => valid_type gamma (snd x)) vs):
-  formula_rep pf vt vv (fforalls vs f) 
+  formula_rep pf vv (fforalls vs f) 
     (fforalls_typed vs f Hval Hall) =
     all_dec (forall (h: arg_list domain  
       (map (v_subst vt) (map snd vs))),
-      formula_rep pf vt (substi_mult vt vv vs h) f Hval).
+      formula_rep pf (substi_mult vv vs h) f Hval).
 Proof.
   revert vv.
   generalize dependent (fforalls_typed vs f Hval Hall).
   induction vs; simpl; intros Hval' vv.
-  - destruct (formula_rep pf vt vv f Hval') eqn : Hrep; 
+  - destruct (formula_rep pf vv f Hval') eqn : Hrep; 
     match goal with |- context[ all_dec ?P ] => destruct (all_dec P); auto end; simpl.
     + exfalso. apply n; intros. erewrite fmla_rep_irrel. apply Hrep.
     + rewrite <- Hrep. erewrite fmla_rep_irrel. apply i. constructor.
@@ -550,11 +557,11 @@ Qed.
 Lemma fforalls_rep' (vv: val_vars pd vt) 
   (vs: list vsymbol) (f: formula) 
   Hval1 Hval2:
-  formula_rep pf vt vv (fforalls vs f) 
+  formula_rep pf vv (fforalls vs f) 
     Hval2 =
     all_dec (forall (h: arg_list domain  
     (map (v_subst vt) (map snd vs))),
-      formula_rep pf vt (substi_mult vt vv vs h) f Hval1).
+      formula_rep pf (substi_mult vv vs h) f Hval1).
 Proof.
   assert (A:=Hval2).
   apply fforalls_typed_inv  in A. split_all.
@@ -599,9 +606,9 @@ Lemma iter_flet_rep (vv: val_vars pd vt)
   (vs: list (vsymbol * term)) (f: formula)
   (Hval: formula_typed gamma f)
   (Hall: Forall (fun x => term_has_type gamma (snd x) (snd (fst x))) vs) :
-  formula_rep pf vt vv (iter_flet vs f) 
+  formula_rep pf vv (iter_flet vs f) 
     (iter_flet_typed vs f Hval Hall) =
-  formula_rep pf vt (substi_multi_let pf vt vv vs Hall) f Hval.
+  formula_rep pf (substi_multi_let pf vv vs Hall) f Hval.
 Proof.
   generalize dependent (iter_flet_typed vs f Hval Hall).
   revert vv.
@@ -643,9 +650,9 @@ Qed.
 Lemma iter_fand_rep (vv: val_vars pd vt) 
 (l: list formula)
 (Hall: formula_typed gamma (iter_fand l)) :
-formula_rep pf vt vv (iter_fand l) Hall <->
+formula_rep pf vv (iter_fand l) Hall <->
 (forall (f: formula) (Hvalf: formula_typed gamma f),
-  In f l -> formula_rep pf vt vv f Hvalf).
+  In f l -> formula_rep pf vv f Hvalf).
 Proof.
   revert Hall.
   induction l; simpl; intros; auto; split; intros; auto.
@@ -707,17 +714,17 @@ Qed.
 Lemma fexists_rep (vv : val_vars pd vt) (vs : list vsymbol)
   (f : formula) (Hval : formula_typed gamma f)
   (Hall : Forall (fun x : string * vty => valid_type gamma (snd x)) vs):
-  formula_rep pf vt vv (fexists vs f)
+  formula_rep pf vv (fexists vs f)
     (fexists_typed vs f Hval Hall) =
   all_dec
     (exists
       h : arg_list domain (map (v_subst vt) (map snd vs)),
-    formula_rep pf vt (substi_mult vt vv vs h) f Hval).
+    formula_rep pf (substi_mult vv vs h) f Hval).
 Proof.
   revert vv.
   generalize dependent (fexists_typed vs f Hval Hall).
   induction vs; simpl; intros Hval' vv.
-  - destruct (formula_rep pf vt vv f Hval') eqn : Hrep; 
+  - destruct (formula_rep pf vv f Hval') eqn : Hrep; 
     match goal with |- context[ all_dec ?P ] => destruct (all_dec P); auto end; simpl.
     + exfalso. apply n; intros. exists (HL_nil _). erewrite fmla_rep_irrel; apply Hrep.
     + rewrite <- Hrep. destruct e as [_ Hrep'].
@@ -745,12 +752,12 @@ Lemma fexists_rep'
   (vv: val_vars pd vt) 
   (vs: list vsymbol) (f: formula) 
   Hval1 Hval2:
-  formula_rep pf vt vv (fexists vs f)
+  formula_rep pf vv (fexists vs f)
     Hval2 =
   all_dec
     (exists
       h : arg_list domain (map (v_subst vt) (map snd vs)),
-    formula_rep pf vt (substi_mult vt vv vs h) f Hval1).
+    formula_rep pf (substi_mult vv vs h) f Hval1).
 Proof.
   assert (A:=Hval2).
   apply fexists_typed_inv  in A. split_all.
@@ -828,8 +835,8 @@ Qed.
 Lemma or_assoc_rep
 (vv: val_vars pd vt)  
 (f1 f2 f3: formula) Hval1 Hval2:
-formula_rep pf vt vv (Fbinop Tor (Fbinop Tor f1 f2) f3) Hval1 =
-formula_rep pf vt vv (Fbinop Tor f1 (Fbinop Tor f2 f3)) Hval2.
+formula_rep pf vv (Fbinop Tor (Fbinop Tor f1 f2) f3) Hval1 =
+formula_rep pf vv (Fbinop Tor f1 (Fbinop Tor f2 f3)) Hval2.
 Proof.
   simpl_rep_full. rewrite orb_assoc. f_equal. f_equal.
   all: apply fmla_rep_irrel.
@@ -837,10 +844,10 @@ Qed.
 
 Lemma iter_for_rep (vv : val_vars pd vt) (l : list formula)
   (Hall : formula_typed gamma (iter_for l)):
-  formula_rep pf vt vv (iter_for l) Hall <->
+  formula_rep pf vv (iter_for l) Hall <->
   (exists (f : formula),
     In f l /\ forall (Hvalf : formula_typed gamma f),
-      formula_rep pf vt vv f Hvalf).
+      formula_rep pf vv f Hvalf).
 Proof.
   revert Hall. induction l; simpl; intros; split; auto.
   - simpl_rep_full. discriminate.
@@ -900,8 +907,8 @@ Lemma iter_fimplies_rep
   (vv: val_vars pd vt) 
   (l: list formula) (f: formula) 
   Hty:
-  formula_rep pf vt vv (iter_fimplies l f) Hty =
-  formula_rep pf vt vv (Fbinop Timplies (iter_fand l) f) 
+  formula_rep pf vv (iter_fimplies l f) Hty =
+  formula_rep pf vv (Fbinop Timplies (iter_fand l) f) 
     (iter_fimplies_alt_ty Hty).
 Proof.
   generalize dependent (iter_fimplies_alt_ty Hty).
@@ -924,11 +931,3 @@ Qed.
 End Implies.
 
 End Iter.
-
-Lemma bool_of_binop_impl: forall b1 b2,
-  bool_of_binop Timplies b1 b2 = all_dec (b1 -> b2).
-Proof.
-  intros. destruct b1; destruct b2; simpl;
-  match goal with |- context[ all_dec ?P ] => destruct (all_dec P); auto end;
-  exfalso; apply n; auto.
-Qed.

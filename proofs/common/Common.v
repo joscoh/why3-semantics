@@ -309,17 +309,3 @@ Lemma str_app_assoc_22 (s1 s2 s3 s4: string):
 Proof.
   rewrite !str_app_assoc; reflexivity.
 Qed.
-
-Definition iter_and (l: list Prop) : Prop :=
-  fold_right and True l.
-
-Lemma prove_iter_and (ps: list Prop):
-  (forall x, In x ps -> x) <-> iter_and ps.
-Proof.
-  induction ps; simpl; split; intros; auto.
-  - destruct H0.
-  - split. apply H. left. reflexivity.
-    rewrite <- IHps. intros x Hinx. apply H. right. assumption.
-  - destruct H. destruct H0; subst; auto.
-    apply IHps; auto.
-Qed.
