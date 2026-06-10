@@ -1685,9 +1685,6 @@ Proof.
     intros.
     assert (e = e0) by (apply UIP_dec; apply Nat.eq_dec). subst.
     cbn.
-    generalize dependent (gamma_all_unif gamma_valid2 m Hinctx1).
-    generalize dependent  (gamma_all_unif gamma_valid1 m Hinctx2).
-    intros. assert (H0 = H1) by (apply bool_irrelevance). subst.
     assert (Heq2: map (v_subst vt2) vs2 = map (v_subst vt1) vs2). {
       assert (Heq2:=Heq).
       simpl in Heq2.
