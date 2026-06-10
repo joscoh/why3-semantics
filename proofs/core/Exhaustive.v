@@ -113,15 +113,14 @@ Qed.
 (*This shows that our "default" case in [match_rep] is unnecessary -- at least [match_val_single]
   must be Some*)
 Lemma well_typed_sem_exhaust {gamma: context} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar) (v: val_vars pd vt)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar) (v: val_vars pd vt)
   (b: bool) (ret_ty: gen_type b)
   (tm: term) (ty1: vty) (ps: list (pattern * gen_term b))
   (Hpatty: gen_typed gamma b (gen_match tm ty1 ps) ret_ty)
   (Htty: term_has_type gamma tm ty1):
   exists p (Hty: pattern_has_type gamma (fst p) ty1), In p ps /\
-  isSome (match_val_single gamma_valid pd pdf vt ty1 (fst p) Hty
-    (term_rep gamma_valid pd pdf vt pf v tm ty1 Htty)).
+  isSome (match_val_single gamma_valid pd pf vt ty1 (fst p) Hty
+    (term_rep gamma_valid pd pf vt v tm ty1 Htty)).
 Proof.
   pose proof (gen_match_typed_inv gamma b tm ty1 ps ret_ty Hpatty) as [_ [Hallty Hcomp]].
   destruct (typed_pat_match_alpha gamma_valid b ret_ty tm ty1 ps Hpatty Htty) as 
@@ -147,15 +146,15 @@ Proof.
   destruct (compile_bare_single b false tm ty1 ps1) as [tm1|] eqn : Hcomp1; [|discriminate].
   pose proof (compile_bare_single_typed gamma_valid b ret_ty tm ty1 ps1 Htty 
     Htys1 Htys2 tm1 false Hcomp1) as Htyt.
-  pose proof (compile_bare_single_spec1 gamma_valid pd pdf pf vt v b ret_ty
+  pose proof (compile_bare_single_spec1 gamma_valid pd pf vt v b ret_ty
     tm ty1 ps1 Htty Htys1 Htys2 Hdisj tm1 Htyt false Hcomp1) as Hmatch.
   (*Now we use the fact that [match_rep_opt] gives Some, use induction*)
   revert Hmatch Halpha Hlen Hallty. clear. generalize dependent ps1.
   induction ps as [| [p1 a1] ptl IH]; intros [| [p2 a2] ph1]; simpl; auto;
   try discriminate.
   intros Hp Htys2. simpl.
-  destruct (match_val_single gamma_valid pd pdf vt ty1 p2 (Forall_inv Hp)
-    (term_rep gamma_valid pd pdf vt pf v tm ty1 Htty)) as [o|] eqn : Hmatch; auto.
+  destruct (match_val_single gamma_valid pd pf vt ty1 p2 (Forall_inv Hp)
+    (term_rep gamma_valid pd pf vt v tm ty1 Htty)) as [o|] eqn : Hmatch; auto.
   -  (*Case 1: head*) simpl. intros Hsome Hall Hlen Hallty.
     exists (p1, a1). exists (proj1 (Forall_inv Hallty)). split; auto.
     simpl.

@@ -201,7 +201,7 @@ Proof.
   intros.
   specialize (Hval gamma_valid Hwf).
   unfold log_conseq_gen in *. intros.
-  specialize (Hval pd pdf pf pf_full). erewrite satisfies_irrel.
+  specialize (Hval pd pf pf_full). erewrite satisfies_irrel.
   apply Hval. intros. erewrite satisfies_irrel. apply H.
   Unshelve.
   revert Hd. apply s.
@@ -238,7 +238,7 @@ Definition andI_trans : trans :=
 
 Ltac gen_ty :=
   match goal with
-  | |- is_true (formula_rep ?val ?pd ?pdf ?vt ?pf ?vv ?goal ?ty) =>
+  | |- is_true (formula_rep ?val ?pd ?pf ?vt ?vv ?goal ?ty) =>
     generalize dependent ty
   end.
 
@@ -369,7 +369,7 @@ Proof.
   specialize (Hval gamma_valid Hwf).
   unfold log_conseq_gen in *.
   intros.
-  specialize (Hval pd pdf pf pf_full).
+  specialize (Hval pd pf pf_full).
   prove_hyp Hval.
   {
     intros d Hd. erewrite satisfies_irrel; apply (H d Hd).
@@ -417,7 +417,7 @@ Proof.
   specialize (Hval gamma_valid Hwf).
   unfold log_conseq_gen in *.
   intros.
-  specialize (Hval pd pdf pf pf_full).
+  specialize (Hval pd pf pf_full).
   prove_hyp Hval.
   {
     intros d Hd. erewrite satisfies_irrel; apply (H d Hd).
@@ -478,10 +478,10 @@ Proof.
   specialize (Hval3 gamma_valid Hwf3).
   unfold log_conseq_gen in *.
   intros.
-  specialize (Hval1 pd pdf pf pf_full).
-  specialize (Hval2 pd pdf pf pf_full).
-  specialize (Hval3 pd pdf pf pf_full).
-  assert (Hor:  satisfies gamma_valid pd pdf pf pf_full (Fbinop Tor f g) (@task_goal_typed _ Hwf1)).
+  specialize (Hval1 pd pf pf_full).
+  specialize (Hval2 pd pf pf_full).
+  specialize (Hval3 pd pf pf_full).
+  assert (Hor:  satisfies gamma_valid pd pf pf_full (Fbinop Tor f g) (@task_goal_typed _ Hwf1)).
   { apply Hval1. intros d Hd. erewrite satisfies_irrel. apply (H d Hd). }
   clear Hval1.
   revert Hor.
@@ -755,7 +755,7 @@ Proof.
   specialize (E1 gamma_valid Hwf1).
   specialize (E2 gamma_valid Hwf2).
   unfold log_conseq_gen in *; intros.
-  specialize (E2 pd pdf pf pf_full).
+  specialize (E2 pd pf pf_full).
   prove_hyp E2.
   {
     intros. destruct Hd; subst.
@@ -896,22 +896,13 @@ Lemma funs_with_const_constrs {gamma: context}
 (gamma_valid: valid_context gamma)
 (name: string) (s: sort)
 (gamma_valid': valid_context (abs_fun (const_noconstr name s) :: gamma))
-(pd: pi_dom) (pdf: pi_dom_full gamma pd)
-(pf: pi_funpred gamma_valid pd pdf)
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
 (d: domain (dom_aux pd) s):
-forall (m : mut_adt) (a : alg_datatype) 
-  (c : funsym) (Hm : mut_in_ctx m gamma) 
-  (Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
-  (srts : list sort)
-  (Hlens : Datatypes.length srts =
-            Datatypes.length (m_params m))
-  (args : arg_list (domain (dom_aux pd))
-            (sym_sigma_args c srts)),
-funs_with_const (funs gamma_valid pd pf) name s d c srts args =
-constr_rep_dom gamma_valid' m Hm srts Hlens
-(dom_aux pd) a Ha c Hc (adts (change_gamma_dom_full (eq_sym (add_const_mut _ gamma)) pd pdf) m srts) args.
+  ADTSpec.pf_same_constrs gamma_valid gamma_valid' (funs gamma_valid pd pf)
+    (funs_with_const (funs gamma_valid pd pf) name s d).
 Proof.
-  intros.
+  unfold ADTSpec.pf_same_constrs. intros m a c srts m_in1 m_in2 a_in c_in srts_len args.
+  unfold ADTSpec.constr_rep.
   rewrite funs_with_const_diff.
   2: {
     intro C. subst.
@@ -922,29 +913,24 @@ Proof.
     }
     contradiction.
   }
-  rewrite (constrs _ pd pdf pf m a c Hm Ha Hc srts Hlens).
-  unfold constr_rep_dom.
-  simpl. unfold change_gamma_adts. simpl.
-  f_equal.
-  - f_equal.
-    + f_equal. f_equal. apply bool_irrelevance.
-    + f_equal. apply UIP_dec, sort_eq_dec.
-  - apply constr_rep_change_gamma.
+  apply dom_cast_eq.
 Qed.
-  
+
+Lemma funs_with_constr_mut gamma name s:
+  forall m : mut_adt, mut_in_ctx m (abs_fun (const_noconstr name s) :: gamma) -> mut_in_ctx m gamma.
+Proof.
+  intros m. unfold mut_in_ctx. simpl. auto.
+Qed.
+
 Definition pf_with_const {gamma: context} 
 (gamma_valid: valid_context gamma)
 (name: string) (s: sort)
 (gamma_valid': valid_context (abs_fun (const_noconstr name s) :: gamma))
-(pd: pi_dom) (pdf: pi_dom_full gamma pd)
-(pf: pi_funpred gamma_valid pd pdf)
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
 (d: domain (dom_aux pd) s):
-pi_funpred gamma_valid' pd 
-  (change_gamma_dom_full _ pd pdf) :=
-Build_pi_funpred gamma_valid' pd _
-  (funs_with_const (funs gamma_valid pd pf) name s d)
-  (preds gamma_valid pd pf)
-  (funs_with_const_constrs gamma_valid name s gamma_valid' pd pdf pf d).
+pi_funpred gamma_valid' pd  :=
+  mk_pf_from_existing_aux gamma_valid gamma_valid' (funs_with_constr_mut gamma name s) pd pf
+  _ (preds gamma_valid pd pf) (funs_with_const_constrs gamma_valid name s gamma_valid' pd pf d).
 
 (*This interpretation is still a [full_interp].
   This is very annoying to show, because the context changes
@@ -953,12 +939,13 @@ Lemma interp_with_const_full {gamma: context}
 (gamma_valid: valid_context gamma)
 (name: string) (s: sort)
 (gamma_valid': valid_context (abs_fun (const_noconstr name s) :: gamma))
-(pd: pi_dom) (pdf: pi_dom_full gamma pd)
-(pf: pi_funpred gamma_valid pd pdf)
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
 (pf_full: full_interp gamma_valid pd pf)
 (d: domain (dom_aux pd) s):
-full_interp gamma_valid' pd (pf_with_const gamma_valid name s gamma_valid' pd pdf pf d).
+full_interp gamma_valid' pd (pf_with_const gamma_valid name s gamma_valid' pd pf d).
 Proof.
+  assert (pf_eq :  pf_same_constrs pf (pf_with_const gamma_valid name s gamma_valid' pd pf d)).
+  { apply funs_with_const_constrs. }
   destruct pf_full as [full_fun [full_pred [full_ind1 full_ind2]]].
   (*Key: this constant not used before*)
   assert (Hconstnew: ~ In (const_noconstr name s) (sig_f gamma)). {
@@ -1012,7 +999,8 @@ Proof.
   - (*First indprop easy*)
     rewrite fmla_change_gamma_pf with(gamma_valid2:=gamma_valid) 
       (pf2:=pf) (Hval2:= (indprop_fmla_valid gamma_valid l_in p_in f_in)); auto.
-    intros. simpl. rewrite funs_with_const_diff; auto.
+    1: { apply pf_same_constrs_sym; auto. }
+    intros. simpl.  rewrite funs_with_const_diff; auto.
     intro C; subst.
     assert (In (const_noconstr name s) (sig_f gamma)); try contradiction. 
     eapply formula_typed_funsym_in_sig. 2: apply H.
@@ -1030,13 +1018,12 @@ Proof.
     }
     specialize (H _ Hform1 H1).
     assert ((dep_map
-      (formula_rep gamma_valid pd pdf (vt_with_args vt (s_params p) srts)
-       (interp_with_Ps gamma_valid pd pdf pf (map fst l) Ps) vv) fs0 Hform) =
+               (formula_rep gamma_valid pd (interp_with_Ps gamma_valid pd pf (map fst l) Ps)
+               (vt_with_args vt (s_params p) srts) vv) fs0 Hform) =
     (dep_map
-    (formula_rep gamma_valid' pd _ (vt_with_args vt (s_params p) srts)
-      (interp_with_Ps gamma_valid' pd _
-          (pf_with_const gamma_valid name s gamma_valid' pd pdf pf d) 
-          (map fst l) Ps) vv) fs0 Hform1)).
+    (formula_rep gamma_valid' pd
+      (interp_with_Ps gamma_valid' pd (pf_with_const gamma_valid name s gamma_valid' pd pf d) 
+          (map fst l) Ps) (vt_with_args vt (s_params p) srts) vv) fs0 Hform1)).
     {
       apply dep_map_ext.
       intros. apply fmla_change_gamma_pf; simpl; auto;
@@ -1137,9 +1124,9 @@ Proof.
   set (vty':=(sort_to_ty sty)) in *.
   (*And this is a full interp*)
   pose proof (interp_with_const_full gamma_valid name sty 
-    gamma_valid' pd pdf pf pf_full d').
-  set (pf' := (pf_with_const gamma_valid name sty gamma_valid' pd pdf pf d')) in *.
-  specialize (Hval pd _ pf' H1).
+    gamma_valid' pd pf pf_full d').
+  set (pf' := (pf_with_const gamma_valid name sty gamma_valid' pd pf d')) in *.
+  specialize (Hval pd pf' H1).
   prove_hyp Hval.
   {
     (*Delta is satisfied by pf' because our constant does not
@@ -1147,6 +1134,7 @@ Proof.
       intros.
       rewrite (satisfies_ext gamma_valid' gamma_valid).
       apply H. Unshelve. all: auto.
+      1: { apply pf_same_constrs_sym, funs_with_const_constrs. }
       intros. subst pf'. simpl.
       rewrite funs_with_const_diff; auto. 
       intro C; subst fs.
@@ -1184,7 +1172,7 @@ Proof.
   }
   erewrite safe_sub_f_rep with(Hty1:=Hty1) in Hval.
   (*And now we just have to prove these things equal*)
-  assert ((term_rep gamma_valid' pd _ vt pf' vv (t_constsym name vty') vty' Hty1) = d). {
+  assert ((term_rep gamma_valid' pd pf' vt vv (t_constsym name vty') vty' Hty1) = d). {
     unfold t_constsym. simpl_rep_full.
     unfold fun_arg_list. simpl.
     erewrite funs_with_const_same.
@@ -1195,6 +1183,7 @@ Proof.
   (*And now we go from pf' -> pf because d does not appear*)
   erewrite fmla_change_gamma_pf.
   apply Hval. all: auto.
+  1: { apply funs_with_const_constrs. }
   intros. subst pf'. simpl.
   rewrite funs_with_const_diff; auto.
   intro C. subst d'. subst vty'. subst. set (vty':=(sort_to_ty sty)) in *.
@@ -1263,7 +1252,7 @@ Proof.
   specialize (Hval gamma_valid Hwf).
   unfold log_conseq_gen in *.
   intros.
-  specialize (Hval pd pdf pf pf_full).
+  specialize (Hval pd pf pf_full).
   prove_hyp Hval.
   {
     intros. erewrite satisfies_irrel.
@@ -1391,7 +1380,7 @@ Proof.
   rewrite semantic_deduction in Hval.
   unfold log_conseq_gen in *.
   intros.
-  specialize (Hval pd pdf pf pf_full H).
+  specialize (Hval pd pf pf_full H).
   clear H.
   unfold satisfies in *.
   intros.
@@ -1448,8 +1437,8 @@ Proof.
   specialize (Hval1 gamma_valid Hwf1).
   specialize (Hval2 gamma_valid Hwf2).
   unfold log_conseq_gen in *. intros.
-  specialize (Hval1 pd pdf pf pf_full).
-  specialize (Hval2 pd pdf pf pf_full).
+  specialize (Hval1 pd pf pf_full).
+  specialize (Hval2 pd pf pf_full).
   prove_hyp Hval1; [|prove_hyp Hval2]; 
   try (intros d Hd; erewrite satisfies_irrel; apply (H d Hd)).
   clear H. unfold satisfies in *.
@@ -1533,7 +1522,7 @@ Proof.
   specialize (Hval gamma_valid Hwf).
   unfold log_conseq_gen in *.
   intros.
-  specialize (Hval pd pdf pf pf_full).
+  specialize (Hval pd pf pf_full).
   prove_hyp Hval.
   {
     intros. erewrite satisfies_irrel. apply (H _ Hd).
@@ -1651,13 +1640,12 @@ Proof.
       + intros tv Hmem. apply aset_is_empty_mem with (x:=tv) in Hsort. contradiction.
     - unfold idents_of_def; simpl. intros x [[Heq | []] Hinx2]; subst; contradiction.
   }
-  
   symmetry in Hsty. rewrite Hsty in *.
   specialize (Hval2 gamma_valid' Hwf2).
   unfold log_conseq_gen in *.
   intros.
   (*First, specialize exists hyp*)
-  specialize (Hval1 pd pdf pf pf_full).
+  specialize (Hval1 pd pf pf_full).
   prove_hyp Hval1.
   {
     intros d Hd; erewrite satisfies_irrel; apply (H d Hd).
@@ -1673,13 +1661,15 @@ Proof.
     symmetry. apply sort_inj. rewrite <- subst_is_sort_eq; auto.
   }
   set (d' := dom_cast (dom_aux pd) Hsubst d).
+  assert (pf_eq:  pf_same_constrs (pf_with_const gamma_valid name sty gamma_valid' pd pf d') pf).
+  { apply pf_same_constrs_sym, funs_with_const_constrs. }
   (*Forget sty so we can subst vty*)
   generalize dependent sty. intros.
   generalize dependent Hsort.
   subst. intros Hsort.
   set (xty':=(sort_to_ty sty)) in *.
-  specialize (Hval2 pd _ (pf_with_const gamma_valid _ sty gamma_valid' pd pdf pf d')
-    (interp_with_const_full gamma_valid _ _ _ pd pdf pf pf_full d')).
+  specialize (Hval2 pd (pf_with_const gamma_valid _ sty gamma_valid' pd pf d')
+    (interp_with_const_full gamma_valid _ _ _ pd pf pf_full d')).
   prove_hyp Hval2.
   {
     (*Idea: if we have new goal, true because of how we set c to d.
@@ -1696,7 +1686,7 @@ Proof.
       assert (Htyf: formula_typed (abs_fun (const_noconstr name xty') :: gamma) f). {
         destruct Hwf1. simpl_task.
         destruct task_goal_closed; simpl_task.
-        clear Hsubst d' Hval2.
+        clear Hsubst d' Hval2 pf_eq.
         inversion f_ty; subst.
         revert H5.
         apply formula_typed_sublist.
@@ -1943,7 +1933,7 @@ Proof.
   split; auto; intros.
   specialize (Hval gamma_valid Hwf).
   simpl_task. unfold log_conseq_gen in *.
-  intros. specialize (Hval pd pdf pf pf_full).
+  intros. specialize (Hval pd pf pf_full).
   prove_hyp Hval.
   {
     intros. erewrite satisfies_irrel. apply (H _ Hd).
@@ -1998,8 +1988,8 @@ Proof.
   specialize (Hval2 gamma_valid Hwf2).
   unfold log_conseq_gen in *.
   intros.
-  specialize (Hval1 pd pdf pf pf_full).
-  specialize (Hval2 pd pdf pf pf_full).
+  specialize (Hval1 pd pf pf_full).
+  specialize (Hval2 pd pf pf_full).
   prove_hyp Hval1; [|prove_hyp Hval2];
   try (intros; erewrite satisfies_irrel; apply (H _ Hd)).
   unfold satisfies in Hval1, Hval2 |- *.
@@ -2119,7 +2109,7 @@ Proof.
   destruct H as [Hwf Hval].
   specialize (Hval gamma_valid Hwf).
   unfold log_conseq in Hval.
-  specialize (Hval pd pdf pf pf_full).
+  specialize (Hval pd pf pf_full).
   prove_hyp Hval.
   {
     intros. erewrite satisfies_irrel. apply (H0 _ Hd).
@@ -2507,11 +2497,11 @@ Proof.
 Qed.
 
 Lemma iff_equiv_rep {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt)
   (p q: formula) Hty1 Hty2:
-  formula_rep gamma_valid pd pdf vt pf vv (Fbinop Tiff p q) Hty1 =
-  formula_rep gamma_valid pd pdf vt pf vv (Fbinop Tand 
+  formula_rep gamma_valid pd pf vt vv (Fbinop Tiff p q) Hty1 =
+  formula_rep gamma_valid pd pf vt vv (Fbinop Tand 
     (Fbinop Timplies p q) (Fbinop Timplies q p)) Hty2.
 Proof.
   simpl_rep_full.

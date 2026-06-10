@@ -153,7 +153,7 @@ Qed.
 
 Lemma goals_trans_sound (b: context -> formula -> bool) f:
   (forall {gamma: context} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (pf_full: full_interp gamma_valid pd pf)
   (vt: val_typevar) (vv: val_vars pd vt)
   (goal: formula) (Hty: formula_typed gamma goal)
@@ -161,9 +161,9 @@ Lemma goals_trans_sound (b: context -> formula -> bool) f:
   (Hall: Forall (fun x =>
     exists (Htyx: formula_typed gamma x),
       forall vt vv,
-      formula_rep gamma_valid pd pdf vt pf vv x Htyx) (f gamma goal)),
+      formula_rep gamma_valid pd pf vt vv x Htyx) (f gamma goal)),
 
-  formula_rep gamma_valid pd pdf vt pf vv goal Hty) ->
+  formula_rep gamma_valid pd pf vt vv goal Hty) ->
   sound_trans (goals_trans b f).
 Proof.
   intros.
@@ -191,7 +191,7 @@ Proof.
   exists Htyx.
   specialize (Hval gamma_valid Hwf).
   unfold log_conseq in Hval.
-  specialize (Hval pd pdf pf pf_full).
+  specialize (Hval pd pf pf_full).
   prove_hyp Hval.
   intros d Hd.
   erewrite satisfies_irrel.
@@ -205,12 +205,12 @@ Definition trans_goal_sound
   (f: context -> formula -> formula) :
   (forall gamma (gamma_valid: valid_context gamma) 
   fmla (Hfmla: formula_typed gamma fmla),
-  forall pd pdf pf (pf_full: full_interp gamma_valid pd pf) 
+  forall pd pf (pf_full: full_interp gamma_valid pd pf) 
     (Hf: formula_typed gamma (f gamma fmla)), 
     (forall vt vv,
-    formula_rep gamma_valid pd pdf vt pf vv (f gamma fmla) Hf) ->
+    formula_rep gamma_valid pd pf vt vv (f gamma fmla) Hf) ->
     forall vt vv,
-    formula_rep gamma_valid pd pdf vt pf vv fmla Hfmla)->
+    formula_rep gamma_valid pd pf vt vv fmla Hfmla)->
 sound_trans (trans_goal f).
 Proof.
   intros.
@@ -218,7 +218,7 @@ Proof.
   inversion Hall; subst; clear Hall H3.
   destruct H2 as [Htyx Hvalx].
   specialize (H gamma gamma_valid goal Hty).
-  apply (H pd pdf pf pf_full Htyx); intros; apply Hvalx.
+  apply (H pd pf pf_full Htyx); intros; apply Hvalx.
 Qed.
 
 (*This decomposition is justified in the following lemma:*)
@@ -275,7 +275,7 @@ Proof.
   specialize (Hval gamma_valid Hwf).
   unfold log_conseq_gen in *.
   intros.
-  specialize (Hval pd pdf pf pf_full).
+  specialize (Hval pd pf pf_full).
   erewrite satisfies_irrel.
   apply Hval. intros.
   assert (A:=Hd).
@@ -336,19 +336,17 @@ Variable (pn_typed: forall gamma f,
   formula_typed gamma f ->
   formula_typed gamma (pn f)).
 Variable (fn_rep: forall gamma (gamma_valid: valid_context gamma) 
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar)
   (vv: val_vars pd vt) (t: term) (ty: vty) (Hty: term_has_type gamma t ty)
   (Hty2: term_has_type gamma (fn t) ty),
-  term_rep gamma_valid pd pdf vt pf vv t ty Hty =
-  term_rep gamma_valid pd pdf vt pf vv (fn t) ty Hty2).
+  term_rep gamma_valid pd pf vt vv t ty Hty =
+  term_rep gamma_valid pd pf vt vv (fn t) ty Hty2).
 Variable (pn_rep: forall gamma (gamma_valid: valid_context gamma) 
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd)  
-  (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar)
   (vv: val_vars pd vt) (f: formula) (Hty: formula_typed gamma f)
   (Hty2: formula_typed gamma (pn f)),
-  formula_rep gamma_valid pd pdf vt pf vv f Hty =
-  formula_rep gamma_valid pd pdf vt pf vv (pn f) Hty2).
+  formula_rep gamma_valid pd pf vt vv f Hty =
+  formula_rep gamma_valid pd pf vt vv (pn f) Hty2).
 Variable (fn_fv: forall gamma t ty,
   valid_context gamma -> (*NOTE: we need context and typing for [compile_match]*)
   term_has_type gamma t ty ->
@@ -377,77 +375,42 @@ Proof.
   destruct h; simpl in *; auto. f_equal; assumption.
 Qed.
 
-(*TODO: can I assume [gamma_valid1]?*)
-Lemma def_map_constrs {gamma} (gamma_valid: valid_context gamma)
-  (gamma_valid1: valid_context (map def_map gamma))
-(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf):
-  forall (m : mut_adt) (a : alg_datatype) 
-    (c : funsym) (Hm : mut_in_ctx m (map def_map gamma)) 
-    (Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
-    (srts : list sort)
-    (Hlens : Datatypes.length srts =
-              Datatypes.length (m_params m))
-    (args : arg_list (domain (dom_aux pd))
-              (sym_sigma_args c srts)),
-  funs gamma_valid pd pf c srts args =
-  constr_rep_dom gamma_valid1 m Hm srts Hlens 
-    (dom_aux pd) a Ha c Hc (adts (change_gamma_dom_full (eq_sym (def_map_gamma_mut gamma)) pd pdf) m srts) args.
-Proof.
-  intros.
-  assert (m_in: mut_in_ctx m gamma). {
-    revert Hm. apply mut_in_ctx_sublist.
-    rewrite def_map_gamma_mut. apply incl_refl.
-  }
-  rewrite (constrs _ pd pdf pf m a c m_in Ha Hc srts Hlens).
-  unfold constr_rep_dom.
-  (*Doing this without UIP is a bit painful*)
-  simpl. unfold change_gamma_adts. simpl.
-  f_equal.
-  - f_equal.
-    + f_equal. f_equal. apply bool_irrelevance.
-    + f_equal. apply UIP_dec, sort_eq_dec.
-  - f_equal. apply constr_rep_change_gamma.
-Qed.
-
 Definition def_map_pf {gamma} (gamma_valid: valid_context gamma) 
 (gamma_valid1: valid_context (map def_map gamma))
-(pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-(pf: pi_funpred gamma_valid pd pdf):
-pi_funpred gamma_valid1 pd (change_gamma_dom_full (eq_sym (def_map_gamma_mut gamma)) pd pdf) :=
-Build_pi_funpred gamma_valid1 pd _
-  (funs gamma_valid pd pf)
-  (preds gamma_valid pd pf)
-  (def_map_constrs gamma_valid gamma_valid1 pd _ pf).
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
+pi_funpred gamma_valid1 pd := change_gamma_pf gamma_valid gamma_valid1 (eq_sym (def_map_gamma_mut gamma)) pd pf.
 
 (*And we prove that every formula true under this pf in gamma'
   is true under the original in gamma, and vice versa.
   This is trivial*)
 Lemma tm_def_map_pf {gamma} (gamma_valid: valid_context gamma) 
 (gamma_valid1: valid_context (map def_map gamma))
-(pd: pi_dom) (pdf: pi_dom_full gamma pd)  (pf: pi_funpred gamma_valid pd pdf)
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
 (vt: val_typevar) (vv: val_vars pd vt) (t: term) (ty: vty)
 (Hty1: term_has_type gamma t ty)
 (Hty2: term_has_type (map def_map gamma) t ty):
-term_rep gamma_valid1 pd _ vt
-  (def_map_pf gamma_valid gamma_valid1 pd pdf pf) vv t ty Hty2 =
-term_rep gamma_valid pd pdf vt pf vv t ty Hty1.
+term_rep gamma_valid1 pd
+  (def_map_pf gamma_valid gamma_valid1 pd pf) vt vv t ty Hty2 =
+term_rep gamma_valid pd pf vt vv t ty Hty1.
 Proof.
   apply term_change_gamma_pf; simpl; auto.
-  apply def_map_gamma_mut.
+  - apply def_map_gamma_mut.
+  - apply pf_same_constrs_refl_aux.
 Qed.
 
 Lemma fmla_def_map_pf {gamma} (gamma_valid: valid_context gamma)
 (gamma_valid1: valid_context (map def_map gamma))
-(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
 (vt: val_typevar) (vv: val_vars pd vt) (f: formula)
 (Hty1: formula_typed gamma f)
 (Hty2: formula_typed (map def_map gamma) f):
-formula_rep gamma_valid1 pd _ vt
-  (def_map_pf gamma_valid gamma_valid1 pd pdf pf) vv f Hty2 =
-formula_rep gamma_valid pd pdf vt pf vv f Hty1.
+formula_rep gamma_valid1 pd
+  (def_map_pf gamma_valid gamma_valid1 pd pf) vt vv f Hty2 =
+formula_rep gamma_valid pd pf vt vv f Hty1.
 Proof.
   apply fmla_change_gamma_pf; simpl; auto.
-  apply def_map_gamma_mut.
+  - apply def_map_gamma_mut.
+  - apply pf_same_constrs_refl_aux.
 Qed.
 
 Lemma mutfuns_of_def_map gamma:
@@ -486,10 +449,10 @@ Qed.
   recfuns wont necessarily hold)*)
 Lemma def_map_pf_full {gamma} (gamma_valid: valid_context gamma)
 (gamma_valid1: valid_context (map def_map gamma)) 
-(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf):
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd):
 full_interp gamma_valid pd pf ->
 full_interp gamma_valid1 pd 
-  (def_map_pf gamma_valid gamma_valid1 pd pdf pf).
+  (def_map_pf gamma_valid gamma_valid1 pd pf).
 Proof.
   unfold full_interp; intros [Hfun [Hpred [Hconstr Hleast]]]; split_all.
   - clear Hpred Hconstr Hleast.
@@ -499,9 +462,9 @@ Proof.
       exists body1, fun_defined gamma f args body1 /\
       term_has_type gamma body (f_ret f) /\
       forall (Hty1: term_has_type gamma body (f_ret f))
-      (Hty2: term_has_type gamma body1 (f_ret f)) pd pdf pf vt vv,
-      term_rep gamma_valid pd pdf vt pf vv body1 (f_ret f) Hty2 =
-      term_rep gamma_valid pd pdf vt pf vv body (f_ret f) Hty1
+      (Hty2: term_has_type gamma body1 (f_ret f)) pd pf vt vv,
+      term_rep gamma_valid pd pf vt vv body1 (f_ret f) Hty2 =
+      term_rep gamma_valid pd pf vt vv body (f_ret f) Hty1
     ).
     {
       assert (f_in1:=f_in).
@@ -533,9 +496,9 @@ Proof.
       exists body1, pred_defined gamma p args body1 /\
       formula_typed gamma body /\
       forall (Hty1: formula_typed gamma body)
-      (Hty2: formula_typed gamma body1) pd pdf pf vt vv,
-      formula_rep gamma_valid pd pdf vt pf vv body1 Hty2 =
-      formula_rep gamma_valid pd pdf vt pf vv body Hty1
+      (Hty2: formula_typed gamma body1) pd pf vt vv,
+      formula_rep gamma_valid pd pf vt vv body1 Hty2 =
+      formula_rep gamma_valid pd pf vt vv body Hty1
     ).
     {
       assert (p_in1:=p_in).
@@ -590,6 +553,7 @@ Proof.
     intros x y1 y2 Hinx.
     apply fmla_change_gamma_pf; auto.
     + rewrite def_map_gamma_mut. reflexivity.
+    + apply pf_same_constrs_refl_aux.
     + intros p1 srts1 a1 Hinp1.
       simpl.
       apply find_apply_pred_ext; auto.
@@ -598,17 +562,17 @@ Qed.
 Lemma satisfies_def_map_pf
 {gamma} (gamma_valid: valid_context gamma) 
 (gamma_valid1: valid_context (map def_map gamma)) 
-(pd: pi_dom) (pdf: pi_dom_full gamma pd) (pf: pi_funpred gamma_valid pd pdf)
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
 (pf_full: full_interp gamma_valid pd pf)
 (pf_full2: full_interp gamma_valid1 pd
-  (def_map_pf gamma_valid gamma_valid1 pd pdf pf))
+  (def_map_pf gamma_valid gamma_valid1 pd pf))
 (f: formula)
 (Hty1: formula_typed gamma f)
 (Hty2: formula_typed (map def_map gamma) f):
-satisfies gamma_valid1 pd _
-  (def_map_pf gamma_valid gamma_valid1 pd pdf pf) pf_full2 f
+satisfies gamma_valid1 pd
+  (def_map_pf gamma_valid gamma_valid1 pd pf) pf_full2 f
   Hty2 <->
-satisfies gamma_valid pd pdf pf pf_full f Hty1.
+satisfies gamma_valid pd pf pf_full f Hty1.
 Proof.
   unfold satisfies. split; intros.
   specialize (H vt vv).
@@ -630,15 +594,15 @@ Proof.
   intros Hwf1 [Hwf2 Hval].
   split; auto.
   intros gamma_valid Hwf3.
-  unfold log_conseq_gen. intros pd pdf pf pf_full Hsat.
+  unfold log_conseq_gen. intros pd pf pf_full Hsat.
   unfold satisfies.
   assert (task_gamma_valid0:=task_gamma_valid Hwf2).
   simpl in *; simpl_task.
   specialize (Hval task_gamma_valid0 Hwf2).
   unfold log_conseq in Hval.
   specialize (Hval pd).
-  specialize (Hval _ (def_map_pf gamma_valid task_gamma_valid0 pd pdf pf)
-    (def_map_pf_full gamma_valid task_gamma_valid0 pd pdf pf pf_full)).
+  specialize (Hval (def_map_pf gamma_valid task_gamma_valid0 pd pf)
+    (def_map_pf_full gamma_valid task_gamma_valid0 pd pf pf_full)).
   forward Hval. (*Prove equivalence of hypotheses*)
   {
     intros d Hd.
@@ -1028,19 +992,17 @@ Variable (pn_typed: forall gamma f,
   formula_typed gamma f ->
   formula_typed gamma (pn f)).
 Variable (fn_rep: forall gamma (gamma_valid: valid_context gamma) 
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar)
   (vv: val_vars pd vt) (t: term) (ty: vty) (Hty: term_has_type gamma t ty)
   (Hty2: term_has_type gamma (fn t) ty),
-  term_rep gamma_valid pd pdf vt pf vv t ty Hty =
-  term_rep gamma_valid pd pdf vt pf vv (fn t) ty Hty2).
+  term_rep gamma_valid pd pf vt vv t ty Hty =
+  term_rep gamma_valid pd pf vt vv (fn t) ty Hty2).
 Variable (pn_rep: forall gamma (gamma_valid: valid_context gamma) 
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd)  
-  (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (vt: val_typevar)
   (vv: val_vars pd vt) (f: formula) (Hty: formula_typed gamma f)
   (Hty2: formula_typed gamma (pn f)),
-  formula_rep gamma_valid pd pdf vt pf vv f Hty =
-  formula_rep gamma_valid pd pdf vt pf vv (pn f) Hty2).
+  formula_rep gamma_valid pd pf vt vv f Hty =
+  formula_rep gamma_valid pd pf vt vv (pn f) Hty2).
 Variable (fn_fv: forall gamma t ty,
   valid_context gamma -> (*NOTE: we need context and typing for [compile_match]*)
   term_has_type gamma t ty ->

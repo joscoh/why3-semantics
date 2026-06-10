@@ -1,8 +1,7 @@
 (*Induction for ADTs*)
-Require Export Interp. (*NOTE: require this so that
-  we can refer to Interp.adts - 
-  could generalize for any proof and just use IndTypes.v*)
-
+Require Export Interp2.
+Require Import IndTypes.
+          
 Section Induction.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
@@ -448,10 +447,10 @@ Theorem adt_rep_ind m m_in srts
   (forall t t_in (x: adt_rep m srts (dom_aux pd) t t_in) 
     (c: funsym) (Hc: constr_in_adt c t) (a: arg_list domain (sym_sigma_args c srts))
     (Hx: x = constr_rep gamma_valid m m_in srts Hlen (dom_aux pd) t t_in c
-      Hc (Interp.adts pdf m srts) a),
+      Hc (Interp2.adts gamma pd pdf m srts) a),
     (forall i t' t_in' Heq, i < length (s_args c) ->
       (*If nth i a has type adt_rep ..., then P holds of it*)
-      P t' t_in' (scast (Interp.adts pdf m srts t' m_in t_in') 
+      P t' t_in' (scast (Interp2.adts gamma pd  pdf m srts t' m_in t_in' Hlen) 
         (dom_cast _ Heq (hnth i a s_int (dom_int pd)))) 
       ) ->
     P t t_in x
@@ -518,7 +517,7 @@ Proof.
     *)
   destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd)
     (fin_nth (typs m) i) (In_in_bool adt_dec _ _ (fin_nth_in (typs m) i))
-    (Interp.adts pdf m srts) (gamma_all_unif gamma_valid m m_in) x') as [c [[c_in args] Hx']].
+    (Interp2.adts gamma pd pdf m srts) (gamma_all_unif gamma_valid m m_in) x') as [c [[c_in args] Hx']].
   (*Here, we need info about a*)
   assert (Hnodupb: nodupb funsym_eq_dec
     (ne_list_to_list (adt_constrs (fin_nth (typs m) i)))). {
@@ -605,7 +604,7 @@ Proof.
     (cast_w (cast_i m m_in (get_idx adt_dec t' (typs m) t_in'))
       (f (get_idx adt_dec t' (typs m) t_in')
         br))) =
-            (scast (Interp.adts pdf m srts t' m_in t_in')
+            (scast (Interp2.adts gamma pd pdf m srts t' m_in t_in' Hlen)
             (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd))))). {
     unfold cast_adt_rep. rewrite cast_w_twice. 2: apply finite_eq_dec.
     (*Now we need to know something about f, again by
@@ -750,7 +749,7 @@ Proof.
     unfold args_to_ind_base, args_to_ind_base_aux.
     subst fin.
     (*need a default adt*)
-    set (d_adt:= scast (Interp.adts pdf m srts t' m_in t_in')
+    set (d_adt:= scast (Interp2.adts gamma pd  pdf m srts t' m_in t_in' Hlen)
     (dom_cast (dom_aux pd) Heq (hnth j args s_int (dom_int pd)))).
     (*1. Push through [tup_of_list]*)
     rewrite tnthS_tup_of_list with(d:=d_adt).

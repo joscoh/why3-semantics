@@ -2211,33 +2211,18 @@ Proof.
   destruct Halpha as [_ [_ [_ Hmuts]]]. rewrite <- Hmuts. auto.
 Qed.
 
-
-(*1. prove pd_full equiv*)
-Lemma a_equiv_pd_full {g1 g2: context} (*(g1_valid: valid_context g1) (g2_valid: valid_context g2)*)
-  (Halpha: a_equiv_ctx g1 g2) {pd: pi_dom} (pdf: pi_dom_full g2 pd) : pi_dom_full g1 pd.
-Proof.
-  inversion pdf. constructor.
-  intros m srgs a m_in a_in.
-  assert (m_in':=a_equiv_mut_in_ctx Halpha m_in).
-  eapply adts; auto.
-Qed.
-
 (*Build the pf*)
 
 Lemma a_equiv_pf {g1 g2: context} (Halpha: a_equiv_ctx g1 g2) (g1_valid: valid_context g1) (g2_valid: valid_context g2) 
-  {pd: pi_dom} (pdf1: pi_dom_full g1 pd)  (pdf2: pi_dom_full g2 pd)
-  (pf: pi_funpred g2_valid pd pdf2) :
-  pi_funpred g1_valid pd pdf1.
+  {pd: pi_dom} (pf: pi_funpred g2_valid pd) :
+  pi_funpred g1_valid pd.
 Proof.
   eapply (@Build_pi_funpred) with (funs:=funs _  _ pf).
   - exact (preds _ _ pf).
-  - intros m a c Hm Ha Hc srts Hlens args.
-    assert (m_in':=a_equiv_mut_in_ctx Halpha Hm).
-    set (x:=(constrs _ _ _ pf _ _ _ m_in' Ha Hc srts Hlens args)).
-    unfold constr_rep_dom in *.
-    refine (eq_trans x _).
-    apply scast_eq_uip'.
-    apply constr_rep_change_gamma.
+  - eapply pf_same_constrs_adt_props with (gamma_valid1 := g2_valid).
+    + apply a_equiv_mut_in_ctx; auto.
+    + apply pf_same_constrs_refl_aux.
+    + apply (adt_props g2_valid pd pf).
 Defined.
 
 (*The [pi_full] is a bit more complicated, though all parts ultimately
@@ -2355,16 +2340,15 @@ Qed.
 
 (*2. Prove full_interp*)
 Lemma a_equiv_pf_full {g1 g2: context} (Halpha: a_equiv_ctx g1 g2) (g1_valid: valid_context g1) (g2_valid: valid_context g2) 
-  {pd: pi_dom} (pdf1: pi_dom_full g1 pd)  (pdf2: pi_dom_full g2 pd)
-  (pf: pi_funpred g2_valid pd pdf2) (pf_full: full_interp g2_valid pd pf) :
-  full_interp g1_valid pd (a_equiv_pf Halpha g1_valid g2_valid pdf1 pdf2 pf).
+  {pd: pi_dom} (pf: pi_funpred g2_valid pd) (pf_full: full_interp g2_valid pd pf) :
+  full_interp g1_valid pd (a_equiv_pf Halpha g1_valid g2_valid pf).
 Proof.
   unfold full_interp in *.
   destruct pf_full as [Hfuns [Hpreds [Hind1 Hind2]]].
   split_all; [clear Hpreds Hind1 Hind2 | clear Hfuns Hind1 Hind2 | clear Hfuns Hpreds Hind2 | clear Hfuns Hpreds Hind1].
   - intros. 
     destruct (fun_defined_alpha Halpha f_in) as [args1 [body1 [f_in' Ha]]].
-    simpl in Ha. simpl.
+    simpl in Ha. simpl. 
     rewrite (Hfuns f args1 body1 f_in' srts srts_len a vt vv).
     (*a few changes: change pf and gamma*) symmetry.
     (*We need typing*)
@@ -2397,8 +2381,8 @@ Proof.
       auto.
     }
     erewrite term_change_gamma_pf with (gamma_valid2:=g1_valid)
-    (pf2:=(a_equiv_pf Halpha g1_valid g2_valid pdf1 pdf2 pf))
-    (gamma_valid1:=g2_valid)(pdf1:=pdf2)
+    (pf2:=(a_equiv_pf Halpha g1_valid g2_valid pf))
+    (gamma_valid1:=g2_valid)
     (pf1:=pf)(Htty2:=Hty1); auto.
     2: { apply a_equiv_sig in Halpha.
       symmetry; apply Halpha.
@@ -2469,6 +2453,7 @@ Proof.
       intros x Hlook1 Hlook2.
       rewrite !list_to_amap_none in Hlook1, Hlook2. rewrite !map_fst_combine in Hlook1, Hlook2; auto.
       rewrite !val_with_args_notin; auto.
+    + apply pf_same_constrs_refl_aux.
   - (*same for preds*)
     (*TODO: should not repeat so much*)
     intros. 
@@ -2504,12 +2489,13 @@ Proof.
       auto.
     }
     erewrite fmla_change_gamma_pf with (gamma_valid2:=g1_valid)
-    (pf2:=(a_equiv_pf Halpha g1_valid g2_valid pdf1 pdf2 pf))
-    (gamma_valid1:=g2_valid)(pdf1:=pdf2)
+    (pf2:=(a_equiv_pf Halpha g1_valid g2_valid pf))
+    (gamma_valid1:=g2_valid)
     (pf1:=pf)(Hval2:=Hty1); auto.
     2: { apply a_equiv_sig in Halpha.
       symmetry; apply Halpha.
     }
+    2: { apply pf_same_constrs_refl_aux. }
     (*Now use [alpha_equiv_t_rep]*)
     eapply alpha_equiv_f_rep; [eauto | |].
     + intros x y Heq Hlook1 Hlook2.
@@ -2587,6 +2573,7 @@ Proof.
     erewrite <- fmla_change_gamma_pf with (Hval1:=Hty); auto.
     + apply a_equiv_f_rep; auto.
     + apply a_equiv_sig in Halpha. symmetry; apply Halpha.
+    + apply pf_same_constrs_refl_aux.
   - (*A bit more complicated but the same basic idea*)
     intros l l_in p p_in _ srts srts_len a vt vv Ps Hall Hpreds.
     assert (Hp:=p_in). rewrite in_map_iff in Hp. destruct Hp as [[p1 fs] [Hp fs_in]]. subst; simpl in *.
@@ -2627,12 +2614,12 @@ Proof.
       (*Now follows from alpha equivalence*)
       (*Prove dep_maps equal*)
       assert (Hdepmap: (dep_map
-          (formula_rep g1_valid pd pdf1 (vt_with_args vt (s_params p2) srts)
-             (interp_with_Ps g1_valid pd pdf1 (a_equiv_pf Halpha g1_valid g2_valid pdf1 pdf2 pf)
-                (map fst l2) Ps) vv) fs4 Hform') =
+          (formula_rep g1_valid pd 
+             (interp_with_Ps g1_valid pd (a_equiv_pf Halpha g1_valid g2_valid pf)
+                (map fst l2) Ps) (vt_with_args vt (s_params p2) srts) vv) fs4 Hform') =
         (dep_map
-        (formula_rep g2_valid pd pdf2 (vt_with_args vt (s_params p2) srts)
-           (interp_with_Ps g2_valid pd pdf2 pf (map fst l2) Ps) vv) fs' Hform)).
+           (formula_rep g2_valid pd (interp_with_Ps g2_valid pd pf (map fst l2) Ps)
+           (vt_with_args vt (s_params p2) srts) vv) fs' Hform)).
       {
         apply list_eq_ext'; rewrite !dep_length_map; auto.
         intros n d Hn.
@@ -2652,6 +2639,7 @@ Proof.
         all: auto.
         Unshelve.
         - clear -Halpha. apply a_equiv_sig in Halpha; apply Halpha.
+        - apply pf_same_constrs_refl_aux.
         - (*Need to allow us to change preds*)
           intros p srts' a' Hinp. simpl.
           apply find_apply_pred_ext. simpl; auto.
@@ -2668,11 +2656,11 @@ Proof.
 Qed.
 
 Lemma a_equiv_satisfies {g1 g2 d1 d2} (g1_valid: valid_context g1) (g2_valid: valid_context g2)
-  {pd pdf1 pf pf_full1} {pdf2: pi_dom_full g1 pd} (Hgamma: a_equiv_ctx g1 g2)
-  {pf_full2: full_interp g1_valid pd (a_equiv_pf Hgamma g1_valid g2_valid pdf2 pdf1 pf)} Hty1 Hty2 
+  {pd pf pf_full1} (Hgamma: a_equiv_ctx g1 g2)
+  {pf_full2: full_interp g1_valid pd (a_equiv_pf Hgamma g1_valid g2_valid pf)} Hty1 Hty2 
   (Halpha: a_equiv_f d1 d2):
-satisfies g2_valid pd pdf1 pf pf_full1 d2 Hty2 <->
-satisfies g1_valid pd pdf2 (a_equiv_pf Hgamma g1_valid g2_valid pdf2 pdf1 pf) pf_full2 d1 Hty1.
+satisfies g2_valid pd pf pf_full1 d2 Hty2 <->
+satisfies g1_valid pd (a_equiv_pf Hgamma g1_valid g2_valid pf) pf_full2 d1 Hty1.
 Proof.
   unfold satisfies. split.
   - intros Hrep vt vv. specialize (Hrep vt vv).
@@ -2680,12 +2668,14 @@ Proof.
     1: { erewrite a_equiv_f_rep. apply Hrep. auto. }
     Unshelve. all: auto.
     + clear -Hgamma. apply a_equiv_sig in Hgamma. apply Hgamma.
+    + apply pf_same_constrs_refl_aux.
     + eapply a_equiv_ctx_formula_typed; eauto.
   - intros Hrep vt vv. specialize (Hrep vt vv).
     erewrite fmla_change_gamma_pf.
     1: { rewrite a_equiv_f_sym in Halpha. erewrite a_equiv_f_rep. apply Hrep. auto. }
     Unshelve. all: auto.
     + clear -Hgamma. apply a_equiv_sig in Hgamma. symmetry; apply Hgamma.
+    + apply pf_same_constrs_refl_aux.
     + eapply a_equiv_ctx_formula_typed_rev; eauto.
 Qed.
 
@@ -2710,13 +2700,12 @@ Proof.
     simpl. simpl_task.
     intros gamma_valid w_ty.
     unfold log_conseq_gen.
-    intros pd pdf pf pf_full Hall.
+    intros pd pf pf_full Hall.
     inversion Hty; subst. simpl_task.
     specialize (Hsem task_gamma_valid Hty).
     unfold log_conseq_gen in Hsem.
-    set (pdf':=(a_equiv_pd_full Hgamma pdf)).
-    set (pf_full':=((a_equiv_pf_full Hgamma task_gamma_valid gamma_valid pdf' pdf pf pf_full))).
-    specialize (Hsem pd pdf' (a_equiv_pf Hgamma task_gamma_valid gamma_valid pdf' pdf pf) pf_full').
+    set (pf_full':=((a_equiv_pf_full Hgamma task_gamma_valid gamma_valid pf pf_full))).
+    specialize (Hsem pd (a_equiv_pf Hgamma task_gamma_valid gamma_valid pf) pf_full').
     (*Prove that all satisfied*)
     forward Hsem.
     {

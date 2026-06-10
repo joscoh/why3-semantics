@@ -33,6 +33,14 @@ Proof.
   inversion H.
 Qed.
 
+(*Some results depend on proof irrelevance, which
+  follows anyway from LEM*)
+Lemma proof_irrel: forall (P: Prop) (H1 H2: P), H1 = H2.
+Proof.
+  apply ClassicalFacts.proof_irrelevance_cci;
+  apply Classical_Prop.classic.
+Qed.
+
  (*A computable version - why is standard version not computable?*)
  Definition proj1' {A B: Prop} (H: A /\ B) : A :=
   match H with
@@ -61,7 +69,7 @@ Ltac case_find_constr :=
 Section DenotDef.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) .
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd).
 
 (*Representation of terms, formulas, patterns*)
 
@@ -534,7 +542,6 @@ Definition pat_has_type_eq {s p ty1 ty2} (H: ty1 = ty2)
   pattern_has_type s p ty2 :=
   cast_prop (pattern_has_type s p) H Hp.
 
-
 (*Updated version: relies on well-typedness
   and matches on ty for constr case, NOT (val ty), which
   removes useful information*)
@@ -589,23 +596,18 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
         eq_trans (f_equal (val v) Htyeq)
           (v_subst_cons (adt_name a) vs) in
 
-      (*We cast to get an ADT, now that we know that this actually is
-          an ADT*)
-      let adt : adt_rep m srts (dom_aux pd) a a_in :=
-        scast (adts pdf m srts a m_in a_in) (dom_cast _ 
-          valeq d) in
+      let adt : ADTSpec.adt_rep (dom_aux pd) a srts := dom_cast _ valeq d in
 
       (*Need a lemma about lengths for [find_constr_rep]*)
-      let lengths_eq : length srts = length (m_params m) := 
+      let srts_len : length srts = length (m_params m) := 
         eq_trans (length_map _ _)
           (adt_vty_length_eq gamma gamma_valid Hisadt 
           (pat_has_type_valid _ _ _ Hty')) in
 
       (*The key part: get the constructor c and arg_list a
           such that d = [[c(a)]]*)
-      let Hrep := find_constr_rep gamma_valid m m_in srts lengths_eq 
-        (dom_aux pd) a a_in (adts pdf m srts) 
-        (gamma_all_unif gamma_valid m m_in) adt in
+      let Hrep := ADTSpec.find_constr_rep gamma_valid _ _
+                    (adt_props gamma_valid _ pf) m_in a_in srts_len adt in
 
       (*The different parts of Hrep we need*)
       let c : funsym := projT1 Hrep in
@@ -772,18 +774,14 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
         eq_trans (f_equal (val v) Htyeq)
           (v_subst_cons (adt_name a) vs) in
 
-      let adt : adt_rep m srts (dom_aux pd) a a_in :=
-        scast (adts pdf m srts a m_in a_in) (dom_cast _ 
-          valeq d) in
+      let adt : ADTSpec.adt_rep (dom_aux pd) a srts := dom_cast _ valeq d in
 
-      let lengths_eq : length srts = length (m_params m) := 
+      let srts_len : length srts = length (m_params m) := 
         eq_trans (length_map _ _)
           (adt_vty_length_eq gamma gamma_valid Hisadt 
           (pat_has_type_valid _ _ _ Hty')) in
 
-      let Hrep := find_constr_rep gamma_valid m m_in srts lengths_eq 
-        (dom_aux pd) a a_in (adts pdf m srts) 
-        (gamma_all_unif gamma_valid m m_in) adt in
+      let Hrep := ADTSpec.find_constr_rep gamma_valid _ _ (adt_props gamma_valid _ pf) m_in a_in srts_len adt in
 
       let c : funsym := projT1 Hrep in
       let c_in : constr_in_adt c a :=
@@ -851,7 +849,7 @@ Proof.
   intros.
   apply H11; lia.
 Qed.
-  
+
 (*Now we want a generic way to prove things about
   [match_val_single] so we don't have to do all of the very
   tedious generalization and nested induction every time*)
@@ -885,20 +883,16 @@ Lemma match_val_single_ind
   (Hinmut: adt_in_mut adt m)
   (Hinctx: mut_in_ctx m gamma)
   (Hvslen2: Datatypes.length vs2 = Datatypes.length (m_params m)),
-  projT1
-  (find_constr_rep gamma_valid m Hinctx (map (val v) vs2)
-    (eq_trans (length_map (val v) vs2)
-        (Hvslen2)) 
-    (dom_aux pd) adt Hinmut (adts pdf m (map (val v) vs2)) 
-    (gamma_all_unif gamma_valid m Hinctx)
-    (scast (adts pdf m (map (val v) vs2) adt Hinctx Hinmut)
+  projT1 (ADTSpec.find_constr_rep gamma_valid _ _ (adt_props gamma_valid _ pf) Hinctx Hinmut
+    (eq_trans (length_map (val v) vs2) (Hvslen2))
         (dom_cast (dom_aux pd)
           (eq_trans (f_equal (val v) Htyeq) 
-          (v_subst_cons (adt_name adt) vs2)) d))) <>
+          (v_subst_cons (adt_name adt) vs2)) d)) <>
   f ->
     P v ty (Pconstr f params ps) d None)
 (*Note: we add as much info as possible to make the condition
   as weak as possible*)
+(* find_constr_rep gamma_valid _ _ (adt_props gamma_valid _ pf) m_in a_in lengths_eq adt in*)
 (Hq: forall
   (v: val_typevar) (f: funsym) (*(vs: list vty)*)
   (adt: alg_datatype) (vs2: list vty) (m: mut_adt)
@@ -914,11 +908,9 @@ Lemma match_val_single_ind
   (Hval: valid_type gamma (vty_cons (adt_name adt) vs2))
   (a: arg_list domain (ty_subst_list_s (s_params f) (map (val v) vs2) 
     (s_args f)))
-  (e: scast (adts pdf m (map (val v) vs2) adt Hinctx Hinmut)
-        (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d) =
-      constr_rep gamma_valid m Hinctx (map (val v) vs2)
-        (eq_trans (length_map (val v) vs2) (Hvslen2 m adt vs2 eq_refl Hval)) 
-        (dom_aux pd) adt Hinmut f i (adts pdf m (map (val v) vs2)) a),
+  (e: (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d) =
+      ADTSpec.constr_rep gamma_valid (dom_aux pd) (funs gamma_valid pd pf) Hinctx Hinmut i
+        (eq_trans (length_map (val v) vs2) (Hvslen2 m adt vs2 eq_refl Hval)) a),
     Q _ a)
 (Hconstr3: forall (v: val_typevar) (f: funsym) (params: list vty)
   (adt: alg_datatype) (vs2: list vty) (m: mut_adt)
@@ -1232,7 +1224,6 @@ Definition bool_of_binop (b: binop) : bool -> bool -> bool :=
   | Tiff => eqb
   end.
 
-Variable (pf: pi_funpred gamma_valid pd pdf).
 Notation funs := (funs gamma_valid pd pf).
 
 (*The match case*)
@@ -1465,7 +1456,7 @@ End DenotDef.
 
 Ltac simpl_rep :=
   repeat match goal with
-  | |- context [term_rep ?valid ?pd _ ?vt ?pf ?v ?t ?ty ?Hty] =>
+  | |- context [term_rep ?valid ?pd ?pf ?vt ?v ?t ?ty ?Hty] =>
     lazymatch t with
     | Tconst (ConstInt ?z) => rewrite term_rep_equation_1
     | Tconst (ConstReal ?r) => rewrite term_rep_equation_2
@@ -1476,7 +1467,7 @@ Ltac simpl_rep :=
     | Tmatch ?t ?v ?ps => rewrite term_rep_equation_7
     | Teps ?f ?v => rewrite term_rep_equation_8
     end
-  | |- context [formula_rep ?valid ?pd _ ?vt ?pf ?v ?f ?Hval] =>
+  | |- context [formula_rep ?valid ?pd ?pf ?vt ?v ?f ?Hval] =>
     lazymatch f with
     | Fpred ?p ?vs ?ts => rewrite formula_rep_equation_1
     | Fquant Tforall ?x ?f' => rewrite formula_rep_equation_2
@@ -1631,8 +1622,9 @@ Lemma match_val_single_ext {gamma1 gamma2: context}
   (*The contexts must agree on all ADTs*)
   (Hadts: mut_of_context gamma1 = mut_of_context gamma2)
   (pd: pi_dom)
-  (pdf1: pi_dom_full gamma1 pd)
-  (pdf2: pi_dom_full gamma2 pd)
+  (pf1 : pi_funpred gamma_valid1 pd)
+  (pf2 : pi_funpred gamma_valid2 pd)
+  (pf_eq: pf_same_constrs pf1 pf2)
   (vt1 vt2: val_typevar) (ty: vty)
   (Heq: v_subst vt2 ty = v_subst vt1 ty)
   (p: pattern)
@@ -1644,13 +1636,12 @@ Lemma match_val_single_ext {gamma1 gamma2: context}
       exists y2 (Heq: projT1 y1 = projT1 y2),
       amap_lookup m2 x1 = Some y2 /\ 
       projT2 y2 = dom_cast (dom_aux pd) Heq (projT2 y1))
-    (match_val_single gamma_valid1 pd pdf1 vt1 ty p Hval1
+    (match_val_single gamma_valid1 pd pf1 vt1 ty p Hval1
       (dom_cast (dom_aux pd) Heq d))
-    (match_val_single gamma_valid2 pd pdf2 vt2 ty p Hval2 d).
+    (match_val_single gamma_valid2 pd pf2 vt2 ty p Hval2 d).
 Proof.
   revert ty Hval1 Hval2 Heq d. (*TODO: generalize vt?*)
   induction p; intros ty Hval1 Hval2 Heq d.
-  (*NOTE: var MUCH more complicated than before, is there better way?*)
   - (*Pvar*) simpl. intros x1 y1. unfold amap_singleton.
     destruct (vsymbol_eq_dec x1 v); subst; auto.
     + setoid_rewrite amap_set_lookup_same. split.
@@ -1696,68 +1687,41 @@ Proof.
     cbn.
     generalize dependent (gamma_all_unif gamma_valid2 m Hinctx1).
     generalize dependent  (gamma_all_unif gamma_valid1 m Hinctx2).
-    intros. assert (i = i0) by (apply bool_irrelevance). subst.
+    intros. assert (H0 = H1) by (apply bool_irrelevance). subst.
     assert (Heq2: map (v_subst vt2) vs2 = map (v_subst vt1) vs2). {
       assert (Heq2:=Heq).
       simpl in Heq2.
       injection Heq2; intros Hmap. apply Hmap.
     }
     (*Relate the two constr reps*)
+    pose proof (find_constr_rep_equiv gamma_valid1 gamma_valid2 pf_eq (adt_props gamma_valid1 pd pf1)
+                  (adt_props gamma_valid2 pd pf2) Hinctx2 Hinctx1 Hinmut2 (eq_sym Heq2)
+                  (eq_trans (length_map (v_subst vt1) vs2) e0)
+                  (eq_trans (length_map (v_subst vt2) vs2) e0)
+                  (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2))
+                     (dom_cast (dom_aux pd) Heq d))
+                  (dom_cast (dom_aux pd) (eq_trans eq_refl (v_subst_cons (adt_name adt) vs2)) d)
+                 
+      ) as Hrep.
+    prove_hyp Hrep.
+    {
+      clear. rewrite !dom_cast_refl. unfold ADTSpec.adt_rep. simpl in *.
+      generalize dependent (map (v_subst vt1) vs2).
+      intros; subst. simpl. assert (Heq = eq_refl) by (apply UIP_dec, sort_eq_dec). subst; reflexivity.
+    }
+    simpl in Hrep.
     case_find_constr.
     intros [f1 [[x_in1 a1] Hcast1]] [f2 [[x_in2 a2] Hcast2]]; simpl in *;
-    subst.
-    rewrite eq_trans_refl_l in Hcast1, Hcast2. 
-    assert (Hconstr:
-      (constr_rep gamma_valid2 m Hinctx1 (map (v_subst vt2) vs2)
-        (eq_trans (length_map (v_subst vt2) vs2) e0) (dom_aux pd) adt Hinmut2 f1
-        x_in1 (adts pdf2 m (map (v_subst vt2) vs2)) a1 =
-       scast (f_equal 
-        (fun x => adt_rep m x (dom_aux pd) adt Hinmut2) (eq_sym Heq2))
-      (constr_rep gamma_valid1 m Hinctx2 (map (v_subst vt1) vs2)
-        (eq_trans (length_map (v_subst vt1) vs2) e0) (dom_aux pd) adt Hinmut2 f2
-        x_in2 (adts pdf1 m (map (v_subst vt1) vs2)) a2))).
-    {
-      rewrite <- Hcast1, <- Hcast2. unfold dom_cast.
-      rewrite !scast_scast.
-      apply scast_eq_uip.
-    }
-    clear Hcast1 Hcast2.
-    (*Now, we put everything in gamma1*)
-    erewrite (constr_rep_change_gamma gamma_valid2 gamma_valid1 m Hinctx1
-      Hinctx2 (map (v_subst vt2) vs2)
-      (eq_trans (length_map (v_subst vt2) vs2) e0) (dom_aux pd))
-    with (adts2:=(adts pdf1 m (map (v_subst vt2) vs2))) in Hconstr.
-    (*Now both constrs are in gamma1, so we can begin to relate them*)
-    (*Now, we first show that f1 = f2*)
-    assert (f1 = f2). {
-      generalize dependent (eq_trans (length_map (v_subst vt2) vs2) e0).
-      generalize dependent (eq_trans (length_map (v_subst vt1) vs2) e0).
-      generalize dependent (map (v_subst vt2) vs2).
-      intros. subst. (*simpl in H0.*)
-      (*Now, we show that if x <> x0, this contradicts disjointness*)
-      destruct (funsym_eq_dec f1 f2); subst; auto.
-      exfalso. assert (e = e1) by (apply UIP_dec; apply Nat.eq_dec); subst.
-      simpl in Hconstr.
-      apply (constr_rep_disjoint gamma_valid1 m Hinctx2 _ e1 (dom_aux pd) adt
-      Hinmut2 (adts pdf1 m (map (v_subst vt1) vs2)) a1 a2 (ltac:(auto)) Hconstr).
-    }
-    subst f1.
-    (*And now we can show that a1 = a2 (with casting)*)
-    assert (a1 = (cast_arg_list (f_equal (sym_sigma_args f2) (eq_sym Heq2)) a2)). {
-      generalize dependent (eq_trans (length_map (v_subst vt2) vs2) e0).
-      generalize dependent (eq_trans (length_map (v_subst vt1) vs2) e0).
-      generalize dependent (map (v_subst vt2) vs2).
-      intros. subst.
-      (*Now we use injectivity of constructors (knowing that f1 = f2)*) 
-      simpl.  unfold cast_arg_list. simpl.
-      assert (e = e1) by (apply UIP_dec; apply Nat.eq_dec); subst.
-      assert (x_in1 = x_in2) by apply bool_irrelevance; subst.
-      simpl in Hconstr.
-      apply (constr_rep_inj) in Hconstr; auto.
-    }
+      subst.
+    intros [f_eq a_eq]. subst f2.
+    simpl in a_eq. unfold f_equal2 in a_eq. simpl in a_eq.
+    rewrite eq_trans_refl_l in Hcast1, Hcast2, a_eq.
+    rewrite eq_sym_involutive in a_eq.
+    assert (Ha1: a1 = (cast_arg_list (f_equal (sym_sigma_args f1) (eq_sym Heq2)) a2)). {
+      subst. rewrite cast_arg_list_compose. symmetry. apply cast_arg_list_same. } clear a_eq.
     subst.
     (*Now that we know all of this information, we can simplify for induction*)
-    destruct (funsym_eq_dec f2 f); [| simpl; solve[auto]]. subst.
+    destruct (funsym_eq_dec f1 f); [| simpl; solve[auto]]. subst.
     (*Deal with Hvslen1*)
     repeat match goal with
     | |- context [sym_sigma_args_map ?vt ?f ?vs ?H] => generalize dependent H
@@ -1766,7 +1730,7 @@ Proof.
     assert (Hlen1 = Hlen2) by (apply UIP_dec; apply Nat.eq_dec); subst.
     simpl.
     assert (x_in2 = x_in1) by (apply bool_irrelevance); subst.
-    assert (Heqty: 
+    assert (Heqty:
       map (v_subst vt2) (ty_subst_list (s_params f) vs2 (s_args f)) =
       map (v_subst vt1) (ty_subst_list (s_params f) vs2 (s_args f))).
     {
@@ -1788,7 +1752,7 @@ Proof.
     rewrite Hcast; clear Hcast.
     generalize dependent (cast_arg_list (sym_sigma_args_map vt2 f vs2 Hlen2)
         (cast_arg_list (f_equal (sym_sigma_args f) (eq_sym Heq2)) a2)).
-    intros a3. clear Hconstr. clear a2.
+    intros a3. clear Hcast2 Hcast1 a2.
     (*Now generalize for induction*)
     generalize dependent (pat_constr_ind gamma_valid2 Hval2 Hinctx1 Hinmut2 eq_refl x_in1).
     generalize dependent (pat_constr_ind gamma_valid1 Hval1 Hinctx2 Hinmut2 eq_refl x_in1).
@@ -1809,14 +1773,14 @@ Proof.
       (*Now we proceed by cases*)
       rewrite hlist_hd_cast with (Heq2:=cons_inj_hd Heqty).
       rewrite hlist_tl_cast with (Heq:=Heqty).
-      specialize (H2 (ty_subst (s_params f) vs2 ahd)
+      specialize (H3 (ty_subst (s_params f) vs2 ahd)
         (Forall_inv f0) (Forall_inv f1) (cons_inj_hd Heqty)
           (hlist_hd a3)).
-      revert H2.
+      revert H3.
       destruct_match_single l1 Hmatch1;
       destruct_match_single l2 Hmatch2; simpl; try contradiction; [|solve[auto]].
       intros Hsome1.
-      specialize (IH (hlist_tl a3) _ H3
+      specialize (IH (hlist_tl a3) _ H4
         (cons_inj_tl Heqty)
         (Forall_inv_tail f0) (Forall_inv_tail f1)).
       revert IH.
@@ -1855,13 +1819,13 @@ Proof.
         -- intros Hy12; inversion Hy12; subst; clear Hy12. eauto.
         -- intros [y4 [Heq4 [Hy24 Hproj24]]]; subst.
           destruct y1; destruct y2; destruct y2'; destruct y2''; destruct y4; simpl in *; subst.
-          unfold dom_cast in Hy24; simpl in Hy24. auto. 
+          rewrite dom_cast_refl in Hy24. auto. 
       * destruct Hget1' as [y2' [Heq' [Hy2' Hproj2']]]. setoid_rewrite Hy2'.
         split.
         -- intros Hy12; inversion Hy12; subst; clear Hy12. eauto.
         -- intros [y4 [Heq4 [Hy24 Hproj24]]]; subst.
           destruct y1; destruct y2; destruct y2'; destruct y4; simpl in *; subst.
-          unfold dom_cast in Hy24; simpl in Hy24. auto. 
+          rewrite dom_cast_refl in Hy24. auto. 
       * (*Mirror of previous*)
         destruct Hget3' as [y2'' [Heq'' [Hy2'' Hproj2'']]].
         assert (Hl2: amap_lookup l2 x1 = None) by (rewrite <- Hnone; eauto).
@@ -1871,7 +1835,7 @@ Proof.
         -- intros Hy12; inversion Hy12; subst; clear Hy12. eauto.
         -- intros [y4 [Heq4 [Hy24 Hproj24]]]; subst.
           destruct y2''; destruct y2; destruct y3; destruct y4; simpl in *; subst.
-          unfold dom_cast in Hy24; simpl in Hy24. auto.
+          rewrite dom_cast_refl in Hy24; auto.
       * assert (Hl2: amap_lookup l2 x1 = None) by (rewrite <- (Hnone l1 l2); eauto).
         assert (Hl4: amap_lookup l4 x1 = None) by (rewrite <- (Hnone l3 l4); eauto).
         setoid_rewrite Hl2. setoid_rewrite Hl4. split; intros; intros; destruct_all; discriminate.
@@ -1914,18 +1878,19 @@ Lemma match_val_single_change_gamma {gamma1 gamma2: context}
   (*The contexts must agree on all ADTs*)
   (Hadts: mut_of_context gamma1 = mut_of_context gamma2)
   (pd: pi_dom)
-  (pdf1: pi_dom_full gamma1 pd)
-  (pdf2: pi_dom_full gamma2 pd)
+  (pf1 : pi_funpred gamma_valid1 pd)
+  (pf2 : pi_funpred gamma_valid2 pd)
+  (pf_eq: pf_same_constrs pf1 pf2)
   (vt: val_typevar) (ty: vty)
   (p: pattern)
   (Hval1: pattern_has_type gamma1 p ty)
   (Hval2: pattern_has_type gamma2 p ty)
   (d: domain (dom_aux pd) (v_subst vt ty)):
-  match_val_single gamma_valid1 pd pdf1 vt ty p Hval1 d =
-  match_val_single gamma_valid2 pd pdf2 vt ty p Hval2 d.
+  match_val_single gamma_valid1 pd pf1 vt ty p Hval1 d =
+  match_val_single gamma_valid2 pd pf2 vt ty p Hval2 d.
 Proof.
   pose proof (match_val_single_ext gamma_valid1 gamma_valid2 Hadts pd 
-    pdf1 pdf2 vt vt ty eq_refl p Hval1 Hval2 d) as Hrel.
+    pf1 pf2 pf_eq vt vt ty eq_refl p Hval1 Hval2 d) as Hrel.
   destruct_match_single l1 Hmatch1;
   destruct_match_single l2 Hmatch2; try contradiction; auto.
   simpl in Hrel.
@@ -1934,8 +1899,7 @@ Proof.
   apply amap_ext.
   intros x. destruct (amap_lookup l1 x) as [y1|] eqn : Hget.
   - symmetry. apply Hrel in Hget. destruct Hget as [y2 [Heq [Hget2 Hproj2]]].
-    destruct y1; destruct y2; simpl in *; subst. unfold dom_cast in Hget2. simpl in Hget2.
-    assumption.
+    destruct y1; destruct y2; simpl in *; subst. rewrite dom_cast_refl in Hget2. auto.
   - destruct (amap_lookup l2 x) as [y2|] eqn : Hget1; auto.
     assert (Hlookup: amap_lookup l1 x = Some y2).
     { apply Hrel. exists y2. exists eq_refl. auto. }
@@ -1944,21 +1908,22 @@ Qed.
 
 (*2: Just change typing proof*)
 Corollary match_val_single_irrel {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) (v: val_typevar) (ty: vty)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (v: val_typevar) (ty: vty)
   (p: pattern)
   (Hval1 Hval2: pattern_has_type gamma p ty)
   (d: domain (dom_aux pd) (v_subst v ty)) :
-  match_val_single gamma_valid pd pdf v ty p Hval1 d =
-  match_val_single gamma_valid pd pdf v ty p Hval2 d.
+  match_val_single gamma_valid pd pf v ty p Hval1 d =
+  match_val_single gamma_valid pd pf v ty p Hval2 d.
 Proof.
   apply match_val_single_change_gamma; auto.
+  apply pf_same_constrs_refl; reflexivity.
 Qed.
 
 (*3: Change typevar but not gamma*)
 Lemma match_val_single_change_vt {gamma: context}
   (gamma_valid: valid_context gamma)
   (pd: pi_dom)
-  (pdf: pi_dom_full gamma pd)
+  (pf: pi_funpred gamma_valid pd)
   (vt1 vt2: val_typevar) (ty: vty)
   (Heq: v_subst vt2 ty = v_subst vt1 ty)
   (p: pattern)
@@ -1969,12 +1934,12 @@ Lemma match_val_single_change_vt {gamma: context}
     amap_lookup l2 x = Some y ->
     exists z (Heq: projT1 y = projT1 z), amap_lookup l1 x = Some z /\
     projT2 z =  (dom_cast (dom_aux pd) Heq (projT2 y)))
-    (match_val_single gamma_valid pd pdf vt1 ty p Hval
+    (match_val_single gamma_valid pd pf vt1 ty p Hval
       (dom_cast (dom_aux pd) Heq d))
-    (match_val_single gamma_valid pd pdf vt2 ty p Hval d).
+    (match_val_single gamma_valid pd pf vt2 ty p Hval d).
 Proof.
   pose proof (match_val_single_ext gamma_valid gamma_valid 
-    eq_refl pd pdf pdf vt1 vt2 ty Heq p Hval Hval d) as Hopt.
+    eq_refl pd pf pf (pf_same_constrs_refl pf pf eq_refl) vt1 vt2 ty Heq p Hval Hval d) as Hopt.
   revert Hopt.
   apply opt_related_impl.
   (*Easy implication*)
@@ -2000,10 +1965,9 @@ Theorem term_fmla_change_gamma_pf {gamma1 gamma2: context}
 (gamma_valid2: valid_context gamma2)
 (Hadts: mut_of_context gamma1 = mut_of_context gamma2)
 (pd: pi_dom)
-(pdf1: pi_dom_full gamma1 pd)
-(pdf2: pi_dom_full gamma2 pd)
-(pf1: pi_funpred gamma_valid1 pd pdf1)
-(pf2: pi_funpred gamma_valid2 pd pdf2)
+(pf1: pi_funpred gamma_valid1 pd)
+(pf2: pi_funpred gamma_valid2 pd)
+(pf_eq: pf_same_constrs pf1 pf2)
 (vt: val_typevar)
 (t: term) (f: formula):
 (forall (ty: vty) vv
@@ -2015,8 +1979,8 @@ Theorem term_fmla_change_gamma_pf {gamma1 gamma2: context}
   (Hfext: forall f srts a, funsym_in_tm f t ->
     funs gamma_valid1 pd pf1 f srts a = 
     funs gamma_valid2 pd pf2 f srts a),
-    term_rep gamma_valid1 pd pdf1 vt pf1 vv t ty Htty1 =
-    term_rep gamma_valid2 pd pdf2 vt pf2 vv t ty Htty2
+    term_rep gamma_valid1 pd pf1 vt vv t ty Htty1 =
+    term_rep gamma_valid2 pd pf2 vt vv t ty Htty2
 ) /\
 (forall (vv: val_vars pd vt)
   (Hval1: formula_typed gamma1 f)
@@ -2027,8 +1991,8 @@ Theorem term_fmla_change_gamma_pf {gamma1 gamma2: context}
   (Hfext: forall fs srts a, funsym_in_fmla fs f ->
     funs gamma_valid1 pd pf1 fs srts a = 
     funs gamma_valid2 pd pf2 fs srts a),
-  formula_rep gamma_valid1 pd pdf1 vt pf1 vv f Hval1 =
-  formula_rep gamma_valid2 pd pdf2 vt pf2 vv f Hval2).
+  formula_rep gamma_valid1 pd pf1 vt vv f Hval1 =
+  formula_rep gamma_valid2 pd pf2 vt vv f Hval2).
 Proof.
 revert t f; apply term_formula_ind; simpl; intros; simpl_rep_full; auto.
 - destruct c; simpl_rep_full; f_equal; apply UIP_dec; apply vty_eq_dec.
@@ -2074,9 +2038,9 @@ revert t f; apply term_formula_ind; simpl; intros; simpl_rep_full; auto.
   rewrite H with(Htty2:=Hty2) at 1.
   + inversion H0; subst.
     rewrite match_val_single_change_gamma with(gamma_valid2:=gamma_valid2)
-    (Hval2:=Forall_inv Hpat2)(pdf2:=pdf2); auto. simpl.
-    destruct (match_val_single gamma_valid2 pd pdf2 vt v pat1 (Forall_inv Hpat2)
-    (term_rep gamma_valid2 pd pdf2 vt pf2 vv tm v Hty2)) eqn : Hm.
+    (Hval2:=Forall_inv Hpat2)(pf2:=pf2); auto. simpl.
+    destruct (match_val_single gamma_valid2 pd pf2 vt v pat1 (Forall_inv Hpat2)
+    (term_rep gamma_valid2 pd pf2 vt vv tm v Hty2)) eqn : Hm.
     * apply H3; intros; [apply Hpext | apply Hfext]; 
       simpl; rewrite H1; simpl_bool; auto.
     * apply IHps; auto; intros; [apply Hpext | apply Hfext];
@@ -2106,9 +2070,9 @@ revert t f; apply term_formula_ind; simpl; intros; simpl_rep_full; auto.
     apply Hfext. apply existsb_exists.
     exists (nth i tms tm_d); auto.
 - assert (Hd: forall d,
-    formula_rep gamma_valid1 pd pdf1 vt pf1 (substi pd vt vv v d) f 
+    formula_rep gamma_valid1 pd pf1 vt (substi pd vt vv v d) f 
       (typed_quant_inv Hval1) =
-    formula_rep gamma_valid2 pd pdf2 vt pf2 (substi pd vt vv v d) f 
+    formula_rep gamma_valid2 pd pf2 vt (substi pd vt vv v d) f 
       (typed_quant_inv Hval2)).
   {
     intros. apply H; intros; [apply Hpext | apply Hfext]; auto.
@@ -2145,9 +2109,9 @@ revert t f; apply term_formula_ind; simpl; intros; simpl_rep_full; auto.
   rewrite H with(Htty2:=Hty2) at 1.
   + inversion H0; subst.
     rewrite match_val_single_change_gamma with(gamma_valid2:=gamma_valid2)
-    (Hval2:=Forall_inv Hpat2)(pdf2:=pdf2); auto. simpl.
-    destruct (match_val_single gamma_valid2 pd pdf2 vt v pat1 (Forall_inv Hpat2)
-    (term_rep gamma_valid2 pd pdf2 vt pf2 vv tm v Hty2)) eqn : Hm.
+    (Hval2:=Forall_inv Hpat2)(pf2:=pf2); auto. simpl.
+    destruct (match_val_single gamma_valid2 pd pf2 vt v pat1 (Forall_inv Hpat2)
+    (term_rep gamma_valid2 pd pf2 vt vv tm v Hty2)) eqn : Hm.
     * apply H3; intros; [apply Hpext | apply Hfext]; 
       simpl; rewrite H1; simpl_bool; auto.
     * apply IHps; auto; intros; [apply Hpext | apply Hfext];
@@ -2166,35 +2130,34 @@ Definition term_change_gamma_pf {gamma1 gamma2: context}
 (gamma_valid2: valid_context gamma2)
 (Hadts: mut_of_context gamma1 = mut_of_context gamma2)
 (pd: pi_dom)
-(pdf1: pi_dom_full gamma1 pd)
-(pdf2: pi_dom_full gamma2 pd)
-(pf1: pi_funpred gamma_valid1 pd pdf1)
-(pf2: pi_funpred gamma_valid2 pd pdf2)
+(pf1: pi_funpred gamma_valid1 pd)
+(pf2: pi_funpred gamma_valid2 pd)
+(pf_eq: pf_same_constrs pf1 pf2)
 (t: term)
 (ty: vty)
 (vt: val_typevar):=
 (proj_tm (term_fmla_change_gamma_pf gamma_valid1 gamma_valid2
-Hadts pd pdf1 pdf2 pf1 pf2 vt) t) ty.
+Hadts pd pf1 pf2 pf_eq vt) t) ty.
 
 Definition fmla_change_gamma_pf {gamma1 gamma2: context}
 (gamma_valid1: valid_context gamma1)
 (gamma_valid2: valid_context gamma2)
 (Hadts: mut_of_context gamma1 = mut_of_context gamma2)
 (pd: pi_dom)
-(pdf1: pi_dom_full gamma1 pd)
-(pdf2: pi_dom_full gamma2 pd)
-(pf1: pi_funpred gamma_valid1 pd pdf1)
-(pf2: pi_funpred gamma_valid2 pd pdf2)
+(pf1: pi_funpred gamma_valid1 pd)
+(pf2: pi_funpred gamma_valid2 pd)
+(pf_eq: pf_same_constrs pf1 pf2)
 (f: formula)
 (vt: val_typevar):=
 (proj_fmla (term_fmla_change_gamma_pf gamma_valid1 gamma_valid2
-  Hadts pd pdf1 pdf2 pf1 pf2 vt) f).
+  Hadts pd pf1 pf2 pf_eq vt) f).
 
 (*Given a fixed gamma, we can change the pf as long as it
-  agrees on all function and predicate symbols in t/f*)
+  agrees on all function and predicate symbols in t/f and all constrs*)
 Corollary tm_change_pf {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (p1 p2: pi_funpred gamma_valid pd pdf) 
+  (pd: pi_dom)
+  (p1 p2: pi_funpred gamma_valid pd)
+  (pf_eq: pf_same_constrs p1 p2)
   (vt: val_typevar) (v: val_vars pd vt) 
   (t: term) (ty: vty)
   (Hty: term_has_type gamma t ty)
@@ -2204,15 +2167,15 @@ Corollary tm_change_pf {gamma} (gamma_valid: valid_context gamma)
   (Hfext: forall f srts a, funsym_in_tm f t ->
     funs gamma_valid pd p1 f srts a = 
     funs gamma_valid pd p2 f srts a):
-  term_rep gamma_valid pd pdf vt p1 v t ty Hty = 
-  term_rep gamma_valid pd pdf vt p2 v t ty Hty.
+  term_rep gamma_valid pd p1 vt v t ty Hty = 
+  term_rep gamma_valid pd p2 vt v t ty Hty.
 Proof.
   apply term_change_gamma_pf; auto.
 Qed.
 
 Corollary fmla_change_pf {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (p1 p2: pi_funpred gamma_valid pd pdf) 
+  (pd: pi_dom) (p1 p2: pi_funpred gamma_valid pd)
+  (pf_eq: pf_same_constrs p1 p2)
   (vt: val_typevar) (v: val_vars pd vt) 
   (f: formula)
   (Hval: formula_typed gamma f)
@@ -2222,8 +2185,8 @@ Corollary fmla_change_pf {gamma} (gamma_valid: valid_context gamma)
   (Hfext: forall fs srts a, funsym_in_fmla fs f -> 
     funs gamma_valid pd p1 fs srts a = 
     funs gamma_valid pd p2 fs srts a):
-  formula_rep gamma_valid pd pdf vt p1 v f Hval = 
-  formula_rep gamma_valid pd pdf vt p2 v f Hval.
+  formula_rep gamma_valid pd p1 vt v f Hval = 
+  formula_rep gamma_valid pd p2 vt v f Hval.
 Proof.
   apply fmla_change_gamma_pf; auto.
 Qed.
@@ -2234,37 +2197,37 @@ Qed.
   not use it directly)*)
 
 Corollary term_rep_irrel {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) 
+  (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt)
   (t: term) (ty: vty) (Hty1 Hty2: term_has_type gamma t ty):
-  term_rep gamma_valid pd pdf vt pf vv t ty Hty1 =
-  term_rep gamma_valid pd pdf vt pf vv t ty Hty2.
+  term_rep gamma_valid pd pf vt vv t ty Hty1 =
+  term_rep gamma_valid pd pf vt vv t ty Hty2.
 Proof.
-  apply term_change_gamma_pf; auto.
+  apply term_change_gamma_pf; auto. apply pf_same_constrs_refl; auto.
 Qed.
 
 Corollary fmla_rep_irrel {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) 
+  (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt)
   (f: formula) (Hval1 Hval2: formula_typed gamma f):
-  formula_rep gamma_valid pd pdf vt pf vv f Hval1 = 
-  formula_rep gamma_valid pd pdf vt pf vv f Hval2.
+  formula_rep gamma_valid pd pf vt vv f Hval1 = 
+  formula_rep gamma_valid pd pf vt vv f Hval2.
 Proof.
-  apply fmla_change_gamma_pf; auto.
+  apply fmla_change_gamma_pf; auto. apply pf_same_constrs_refl; auto.
 Qed.
 
 (*Also useful, especially in pattern matching compilation*)
 Lemma match_rep_irrel {gamma} (gamma_valid: valid_context gamma) 
-  pd pdf pf vt v
+  pd pf vt v
    (b1: bool) (ty: gen_type b1) ty1 
   (d: domain (dom_aux pd) (v_subst vt ty1)) pats Hpats1 Hpats2 Hpats3 Hpats4 :
 
-  match_rep gamma_valid pd pdf vt v (term_rep gamma_valid pd pdf vt pf) 
-    (formula_rep gamma_valid pd pdf vt pf) b1 ty ty1 d pats Hpats1 Hpats2 =
-  match_rep gamma_valid pd pdf vt v (term_rep gamma_valid pd pdf vt pf) 
-    (formula_rep gamma_valid pd pdf vt pf) b1 ty ty1 d pats Hpats3 Hpats4.
+  match_rep gamma_valid pd pf vt v (term_rep gamma_valid pd pf vt) 
+    (formula_rep gamma_valid pd pf vt) b1 ty ty1 d pats Hpats1 Hpats2 =
+  match_rep gamma_valid pd pf vt v (term_rep gamma_valid pd pf vt) 
+    (formula_rep gamma_valid pd pf vt) b1 ty ty1 d pats Hpats3 Hpats4.
 Proof.
   revert Hpats1 Hpats2 Hpats3 Hpats4. induction pats as [| p ptl IH]; simpl; auto.
   intros. destruct p as [p a]; simpl.
@@ -2283,13 +2246,13 @@ End ChangeContext.
 Section FixedInterp.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd).
-Variable (pf: pi_funpred gamma_valid pd pdf).
+  (pd: pi_dom).
+Variable (pf: pi_funpred gamma_valid pd).
 Notation funs := (funs gamma_valid pd pf).
 Notation domain := (domain (dom_aux pd)).
-Notation term_rep := (term_rep gamma_valid pd pdf).
-Notation formula_rep := (formula_rep gamma_valid pd pdf).
-Notation match_val_single := (match_val_single gamma_valid pd pdf).
+Notation term_rep := (term_rep gamma_valid pd pf).
+Notation formula_rep := (formula_rep gamma_valid pd pf).
+Notation match_val_single := (match_val_single gamma_valid pd pf).
 
 (*Now we prove an extensionality theorem for
   the valuations: If we have 2 val_typevars
@@ -2365,7 +2328,7 @@ Lemma funs_cast_eq f {s1 s2: list sort} (Heq: s1 = s2)
   (funs f s1 a) =
   funs f s2 (cast_arg_list (f_equal (sym_sigma_args f) Heq) a).
 Proof.
-  subst. unfold dom_cast, cast_arg_list. simpl. reflexivity.
+  subst; reflexivity.
 Qed.
 
 Lemma preds_cast_eq p {s1 s2: list sort} (Heq: s1 = s2)
@@ -2384,7 +2347,7 @@ Qed.
 Lemma get_arg_list_vt_ext
 (vt1 vt2: val_typevar)
   (vs1 vs2: list vty) (ts1 ts2: list term) vv1 vv2
-  (reps1 reps2: forall (vt: val_typevar) (pf: pi_funpred gamma_valid pd pdf) 
+  (reps1 reps2: forall (vt: val_typevar) 
     (vv: val_vars pd vt)
     (t: term) (ty: vty) (Hty: term_has_type gamma t ty),
     domain (v_subst vt ty))
@@ -2393,8 +2356,8 @@ Lemma get_arg_list_vt_ext
     (i < length ts1) ->
     forall (ty1 ty2: vty) Hty1 Hty2 Heq,
       dom_cast (dom_aux pd) Heq 
-        (reps1 vt1 pf vv1 (List.nth i ts1 tm_d) ty1 Hty1) =
-      reps2 vt2 pf vv2 (List.nth i ts2 tm_d) ty2 Hty2)
+        (reps1 vt1 vv1 (List.nth i ts1 tm_d) ty1 Hty1) =
+      reps2 vt2 vv2 (List.nth i ts2 tm_d) ty2 Hty2)
   {args: list vty}
   {params: list typevar}
   (Hp: NoDup params)
@@ -2409,8 +2372,8 @@ Lemma get_arg_list_vt_ext
   (Heq: map (v_subst vt1) vs1 = map (v_subst vt2) vs2):
   cast_arg_list 
     (f_equal (fun x => ty_subst_list_s params x args) Heq)
-    (get_arg_list pd vt1 vs1 ts1 (reps1 vt1 pf vv1) Hp Hlents1 Hlenvs1 Hall1) =
-  get_arg_list pd vt2 vs2 ts2 (reps2 vt2 pf vv2) Hp Hlents2 Hlenvs2 Hall2.
+    (get_arg_list pd vt1 vs1 ts1 (reps1 vt1 vv1) Hp Hlents1 Hlenvs1 Hall1) =
+  get_arg_list pd vt2 vs2 ts2 (reps2 vt2 vv2) Hp Hlents2 Hlenvs2 Hall2.
 Proof.
   match goal with
   | |- cast_arg_list ?H ?a = _ => generalize dependent H end.
@@ -2448,7 +2411,7 @@ Qed.
   Hreps*)
 Lemma get_arg_list_vt_eq (vt1 vt2: val_typevar) (s: fpsym)
   (vs: list vty) (ts: list term) vv1 vv2
-  (reps: forall (vt: val_typevar) (pf: pi_funpred gamma_valid pd pdf) 
+  (reps: forall (vt: val_typevar)
     (vv: val_vars pd vt)
     (t: term) (ty: vty) (Hty: term_has_type gamma t ty),
     domain (v_subst vt ty))
@@ -2456,14 +2419,14 @@ Lemma get_arg_list_vt_eq (vt1 vt2: val_typevar) (s: fpsym)
     (fun tm : term =>
       forall (ty: vty) (Hty1 Hty2: term_has_type gamma tm ty) 
         (Heq: v_subst vt2 ty = v_subst vt1 ty),
-        reps vt1 pf vv1 tm ty Hty1 =
-        dom_cast (dom_aux pd) Heq (reps vt2 pf vv2 tm ty Hty2)
+        reps vt1 vv1 tm ty Hty1 =
+        dom_cast (dom_aux pd) Heq (reps vt2 vv2 tm ty Hty2)
       ) ts)
   Hp Hlents Hlenvs Hall
   (Heq: map (v_subst vt2) vs = map (v_subst vt1) vs):
   cast_arg_list (f_equal (sym_sigma_args s) (eq_sym Heq))
-    (get_arg_list pd vt1 vs ts (reps vt1 pf vv1) Hp Hlents Hlenvs Hall) =
-  get_arg_list pd vt2 vs ts (reps vt2 pf vv2) Hp Hlents Hlenvs Hall.
+    (get_arg_list pd vt1 vs ts (reps vt1 vv1) Hp Hlents Hlenvs Hall) =
+  get_arg_list pd vt2 vs ts (reps vt2 vv2) Hp Hlents Hlenvs Hall.
 Proof.
   apply get_arg_list_vt_ext; auto. 
   rewrite Forall_forall in Hreps.
@@ -2487,15 +2450,15 @@ Theorem tm_fmla_change_vt (t: term) (f: formula):
     (Hvt: forall x, aset_mem x (tm_type_vars t) -> vt1 x = vt2 x)
     (Hvv: forall x (Hinx: aset_mem x (tm_fv t)) 
       (*NOTE: can use (vv_cast_tm1) for cast, but easier to prove
-        more general*)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
+        more general*)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    
       (Heq: v_subst vt1 (snd x) = v_subst vt2 (snd x)), vv2 x = 
       (dom_cast (dom_aux pd) Heq (vv1 x)))
     (ty: vty)
     (Hty: term_has_type gamma t ty)
     (Heq: v_subst vt2 ty = v_subst vt1 ty),
-    term_rep vt1 pf vv1 t ty Hty =
+    term_rep vt1 vv1 t ty Hty =
     dom_cast (dom_aux pd) Heq 
-      (term_rep vt2 pf vv2 t ty Hty)) /\
+      (term_rep vt2 vv2 t ty Hty)) /\
   (forall (vt1 vt2: val_typevar) (vv1: val_vars pd vt1)
     (vv2: val_vars pd vt2)
     (Hvt: forall x, aset_mem x (fmla_type_vars f) -> vt1 x = vt2 x)
@@ -2503,30 +2466,12 @@ Theorem tm_fmla_change_vt (t: term) (f: formula):
       (Heq: v_subst vt1 (snd x) = v_subst vt2 (snd x)), vv2 x = 
       (dom_cast (dom_aux pd) Heq (vv1 x)))
     (Hval: formula_typed gamma f),
-    formula_rep vt1 pf vv1 f Hval =
-    formula_rep vt2 pf vv2 f Hval).
+    formula_rep vt1 vv1 f Hval =
+    formula_rep vt2 vv2 f Hval).
 Proof.
   revert t f. apply term_formula_ind; intros; simpl; simpl_rep_full.
   - destruct c; simpl; simpl_rep_full;
-    inversion Hty; subst; simpl in Heq. 
-    + unfold cast_dom_vty.
-      generalize dependent ((eq_sym (ty_constint_inv Hty))); intros.
-      assert (e = eq_refl). apply UIP_dec. apply vty_eq_dec.
-      subst. simpl. unfold dom_cast; simpl.
-      assert ((f_equal domain Heq) = eq_refl). {
-        (*NOTE: relies on UIP*)
-        apply UIP.
-      }
-      rewrite H. reflexivity.
-    + unfold cast_dom_vty. 
-      generalize dependent (eq_sym (ty_constreal_inv Hty)); intros.
-      assert (e = eq_refl). apply UIP_dec. apply vty_eq_dec.
-      subst. simpl. unfold dom_cast; simpl.
-      assert ((f_equal domain Heq) = eq_refl). {
-        (*NOTE: relies on UIP*)
-        apply UIP.
-      }
-      rewrite H. reflexivity.
+    inversion Hty; subst;  unfold cast_dom_vty;  rewrite !dom_cast_compose; apply dom_cast_eq.
   - (*Variable case - more casting*)
     unfold var_to_dom.
     inversion Hty; subst.
@@ -2548,11 +2493,11 @@ Proof.
     }
     assert (Hargs: 
     (cast_arg_list (f_equal (sym_sigma_args f1) (eq_sym Hmap)) 
-      (fun_arg_list pd vt1 f1 l l1 (term_rep vt1 pf vv1) Hty)) =
+      (fun_arg_list pd vt1 f1 l l1 (term_rep vt1 vv1) Hty)) =
     
-      (fun_arg_list pd vt2 f1 l l1 (term_rep vt2 pf vv2) Hty)). {
+      (fun_arg_list pd vt2 f1 l l1 (term_rep vt2 vv2) Hty)). {
       unfold fun_arg_list.
-      apply get_arg_list_vt_eq.
+      apply  get_arg_list_vt_eq.
       revert H.
       rewrite !Forall_forall; intros.
       assert (Hvt': forall x0 : typevar, aset_mem x0 (tm_type_vars x) -> vt1 x0 = vt2 x0). {
@@ -2570,10 +2515,10 @@ Proof.
     assert (Hfuns: 
     (funs f1 (map (v_subst vt2) l)
     (cast_arg_list (f_equal (sym_sigma_args f1) (eq_sym Hmap))
-        (fun_arg_list pd vt1 f1 l l1 (term_rep vt1 pf vv1) Hty))) =
+        (fun_arg_list pd vt1 f1 l l1 (term_rep vt1 vv1) Hty))) =
     dom_cast (dom_aux pd) (f_equal (funsym_sigma_ret f1) (eq_sym Hmap))
     (funs f1 (map (v_subst vt1) l)
-    (fun_arg_list pd vt1 f1 l l1 (term_rep vt1 pf vv1) Hty))
+    (fun_arg_list pd vt1 f1 l l1 (term_rep vt1 vv1) Hty))
     ).
     { rewrite funs_cast_eq. reflexivity.
     }
@@ -2600,7 +2545,7 @@ Proof.
     (H1 vt1 vt2 vv1 vv2) with(Heq:=Heq); intros;
     try(apply Hvt); try (apply Hvv); simpl; simpl_set; auto.
     (*Now we show that these casts are OK*)
-    destruct (formula_rep vt2 pf vv2 f (proj2' (proj2' (ty_if_inv Hty)))); auto.
+    destruct (formula_rep vt2 vv2 f (proj2' (proj2' (ty_if_inv Hty)))); auto.
   - (*Tmatch*)
     iter_match_gen Hty Htm Hpat Hty.
     induction ps; simpl; auto; intros.
@@ -2617,8 +2562,8 @@ Proof.
     }
     erewrite (H vt1 vt2 vv1 vv2) with (Heq:=Heq1); intros;
     [| apply Hvt | apply Hvv]; try(simpl; simpl_set; auto).
-    pose proof (match_val_single_change_vt gamma_valid pd pdf vt1 vt2
-      v Heq1 p (Forall_inv Hpat) (term_rep vt2 pf vv2 tm v Hty)) as Hopt.
+    pose proof (match_val_single_change_vt gamma_valid pd pf vt1 vt2
+      v Heq1 p (Forall_inv Hpat) (term_rep vt2 vv2 tm v Hty)) as Hopt.
     revert Hopt.
     destruct_match_single l1 Hmatch1;
     destruct_match_single l2 Hmatch2; auto; try contradiction.
@@ -2648,18 +2593,18 @@ Proof.
         - erewrite Hvv. reflexivity.
           simpl. simpl_set; auto.
         - assert (Hnotin: ~ aset_mem x (keys l1)). {
-            erewrite (match_val_single_fv gamma_valid pd pdf); eauto.
+            erewrite (match_val_single_fv gamma_valid pd pf); eauto.
           }
           rewrite<- amap_mem_keys in Hnotin.
           destruct (amap_mem x l1); auto; exfalso; apply Hnotin; auto.
         - assert (Hnotin: ~ aset_mem x (keys l2)). {
-            erewrite (match_val_single_fv gamma_valid pd pdf); eauto.
+            erewrite (match_val_single_fv gamma_valid pd pf); eauto.
           }
           rewrite<- amap_mem_keys in Hnotin.
           destruct (amap_mem x l2); auto; exfalso; apply Hnotin; auto.
       }
       assert (Hinl2: aset_mem x (keys l2)). {
-        erewrite (match_val_single_fv gamma_valid pd pdf); eauto. 
+        erewrite (match_val_single_fv gamma_valid pd pf); eauto. 
       }
       rewrite <- amap_mem_keys in Hinl2.
       unfold amap_mem in Hinl2.
@@ -2694,8 +2639,7 @@ Proof.
     end = dom_cast (dom_aux pd) (eq_sym Heq) (match domain_ne pd (v_subst vt1 ty) with
     | @DE _ _ x => x
     end)). {
-      generalize dependent (v_subst vt2 ty); intros; subst.
-      unfold dom_cast; reflexivity.
+      generalize dependent (v_subst vt2 ty); intros; subst. rewrite dom_cast_refl; reflexivity.
     }
     generalize dependent (match domain_ne pd (v_subst vt2 ty) with
     | @DE _ _ x => x
@@ -2725,9 +2669,7 @@ Proof.
     }
     clear H0.
     (*Now, we can generalize*)
-    generalize dependent (v_subst vt2 ty); intros; subst; 
-    unfold dom_cast; simpl.
-    reflexivity.
+    generalize dependent (v_subst vt2 ty); intros; subst; rewrite dom_cast_refl; reflexivity.
   - (*Preds case*)
     assert (Hmap: map (v_subst vt2) tys = map (v_subst vt1) tys). {
       apply list_eq_ext'; rewrite !length_map; auto.
@@ -2741,9 +2683,9 @@ Proof.
     }
     assert (Hargs: 
     (cast_arg_list (f_equal (sym_sigma_args p) (eq_sym Hmap)) 
-      (pred_arg_list pd vt1 p tys tms (term_rep vt1 pf vv1) Hval)) =
+      (pred_arg_list pd vt1 p tys tms (term_rep vt1 vv1) Hval)) =
     
-    (pred_arg_list pd vt2 p tys tms (term_rep vt2 pf vv2) Hval)). {
+    (pred_arg_list pd vt2 p tys tms (term_rep vt2 vv2) Hval)). {
       unfold pred_arg_list.
       apply get_arg_list_vt_eq.
       revert H.
@@ -2769,9 +2711,9 @@ Proof.
     }
     assert (forall d1 d2,
       d1 = dom_cast (dom_aux pd) (eq_sym Heq) d2 ->
-      formula_rep vt1 pf (substi pd vt1 vv1 v d1) f
+      formula_rep vt1 (substi pd vt1 vv1 v d1) f
       (typed_quant_inv Hval) =
-      formula_rep vt2 pf (substi pd vt2 vv2 v d2) f
+      formula_rep vt2 (substi pd vt2 vv2 v d2) f
       (typed_quant_inv Hval)).
     {
       intros; subst. apply H; intros.
@@ -2848,8 +2790,8 @@ Proof.
     }
     erewrite (H vt1 vt2 vv1 vv2) with (Heq:=Heq1); intros;
     [| apply Hvt | apply Hvv]; try(simpl; simpl_set; auto).
-    pose proof (match_val_single_change_vt gamma_valid pd pdf vt1 vt2
-      v Heq1 p (Forall_inv Hpat) (term_rep vt2 pf vv2 tm v Hty)) as Hopt.
+    pose proof (match_val_single_change_vt gamma_valid pd pf vt1 vt2
+      v Heq1 p (Forall_inv Hpat) (term_rep vt2 vv2 tm v Hty)) as Hopt.
     revert Hopt.
     destruct_match_single l1 Hmatch1;
     destruct_match_single l2 Hmatch2; auto; try contradiction.
@@ -2880,18 +2822,18 @@ Proof.
         - erewrite Hvv. reflexivity.
           simpl. simpl_set; auto.
         - assert (Hnotin: ~ aset_mem x (keys l1)). {
-            erewrite (match_val_single_fv gamma_valid pd pdf); eauto.
+            erewrite (match_val_single_fv gamma_valid pd pf); eauto.
           }
           rewrite<- amap_mem_keys in Hnotin.
           destruct (amap_mem x l1); auto; exfalso; apply Hnotin; auto.
         - assert (Hnotin: ~ aset_mem x (keys l2)). {
-            erewrite (match_val_single_fv gamma_valid pd pdf); eauto.
+            erewrite (match_val_single_fv gamma_valid pd pf); eauto.
           }
           rewrite<- amap_mem_keys in Hnotin.
           destruct (amap_mem x l2); auto; exfalso; apply Hnotin; auto.
       }
       assert (Hinl2: aset_mem x (keys l2)). {
-        erewrite (match_val_single_fv gamma_valid pd pdf); eauto. 
+        erewrite (match_val_single_fv gamma_valid pd pf); eauto. 
       }
       rewrite <- amap_mem_keys in Hinl2.
       unfold amap_mem in Hinl2.
@@ -2938,7 +2880,7 @@ Corollary tm_change_vv (t: term) :
 (forall (v1 v2: val_vars pd vt) (ty: vty) 
   (Hty: term_has_type gamma t ty),
   (forall x, aset_mem x (tm_fv t) -> v1 x = v2 x) ->
-  term_rep vt pf v1 t ty Hty = term_rep vt pf v2 t ty Hty).
+  term_rep vt v1 t ty Hty = term_rep vt v2 t ty Hty).
 Proof.
   intros.
   rewrite tm_change_vt with(vt2:=vt)(vv2:=v2)(Heq:=eq_refl); auto.
@@ -2950,7 +2892,7 @@ Corollary fmla_change_vv f:
 (forall (v1 v2: val_vars pd vt) 
   (Hval: formula_typed gamma f),
   (forall x, aset_mem x (fmla_fv f) -> v1 x = v2 x) ->
-  formula_rep vt pf v1 f Hval = formula_rep vt pf v2 f Hval).
+  formula_rep vt v1 f Hval = formula_rep vt v2 f Hval).
 Proof.
   intros.
   apply (fmla_change_vt) with(vt2:=vt) (vv2:=v2); auto.
@@ -2965,7 +2907,7 @@ Corollary term_closed_val (t: term)
   (v1 v2: val_vars pd vt) (ty: vty)
   (Hty: term_has_type gamma t ty):
   closed_term t ->
-  term_rep vt pf v1 t ty Hty = term_rep vt pf v2 t ty Hty.
+  term_rep vt v1 t ty Hty = term_rep vt v2 t ty Hty.
 Proof.
   unfold closed_term. intros.
   apply tm_change_vv; intros.
@@ -2976,7 +2918,7 @@ Corollary fmla_closed_val (f: formula)
   (v1 v2: val_vars pd vt) 
   (Hval: formula_typed gamma f):
   closed_formula f ->
-  formula_rep vt pf v1 f Hval = formula_rep vt pf v2 f Hval.
+  formula_rep vt v1 f Hval = formula_rep vt v2 f Hval.
 Proof.
   unfold closed_formula; intros.
   apply fmla_change_vv; intros.
@@ -2991,8 +2933,8 @@ End Theorems.
 Section Gen.
 
 Context {gamma: context} (gamma_valid: valid_context gamma).
-Context (pd: pi_dom) (pdf: pi_dom_full gamma pd) 
-  (pf: pi_funpred gamma_valid pd pdf) (vt: val_typevar).
+Context (pd: pi_dom) 
+  (pf: pi_funpred gamma_valid pd) (vt: val_typevar).
 
 Context {b: bool}.
 (* Variable (v: val_vars pd vt). *)
@@ -3000,8 +2942,8 @@ Context {b: bool}.
 Definition gen_rep (v: val_vars pd vt) (ty: gen_type b) (d: gen_term b) (Hty: gen_typed gamma b d ty) : gen_ret pd vt b ty :=
   match b return forall (ty: gen_type b) (dat: gen_term b), 
     gen_typed gamma b dat ty -> gen_ret pd vt b ty with
-  | true => fun ty dat Hty => term_rep gamma_valid pd pdf vt pf v dat ty Hty
-  | false => fun ty dat Hty => formula_rep gamma_valid pd pdf vt pf v dat Hty
+  | true => fun ty dat Hty => term_rep gamma_valid pd pf vt v dat ty Hty
+  | false => fun ty dat Hty => formula_rep gamma_valid pd pf vt v dat Hty
   end ty d Hty.
 
 Lemma gen_rep_change_vv v1 v2 ty t Hty:
@@ -3024,7 +2966,7 @@ Qed.
 
 Lemma gen_rep_let vv (ty2: gen_type b) (x: vsymbol) (t: term) (a: gen_term b) Hty1 Hty2 Hty3:
   gen_rep vv ty2 (gen_let x t a) Hty2 =
-  gen_rep (substi pd vt vv x (term_rep gamma_valid pd pdf vt pf vv t (snd x) Hty1)) ty2 a Hty3.
+  gen_rep (substi pd vt vv x (term_rep gamma_valid pd pf vt vv t (snd x) Hty1)) ty2 a Hty3.
 Proof.
   revert ty2 a Hty2 Hty3.
   unfold gen_let, gen_rep.
@@ -3039,8 +2981,8 @@ Lemma gen_match_rep v (ty: gen_type b) (t: term) (ty1: vty) (pats: list (pattern
   (Hpats1: Forall (fun x => pattern_has_type gamma (fst x) ty1) pats)
   (Hpats2: Forall (fun x => gen_typed gamma b (snd x) ty) pats):
   gen_rep v ty (gen_match t ty1 pats) Hty =
-  match_rep gamma_valid pd pdf vt v (term_rep gamma_valid pd pdf vt pf) (formula_rep gamma_valid pd pdf vt pf)
-    b ty ty1 (term_rep gamma_valid pd pdf vt pf v t ty1 Hty1) pats Hpats1 Hpats2.
+  match_rep gamma_valid pd pf vt v (term_rep gamma_valid pd pf vt) (formula_rep gamma_valid pd pf vt)
+    b ty ty1 (term_rep gamma_valid pd pf vt v t ty1 Hty1) pats Hpats1 Hpats2.
 Proof.
   revert Hty.
   unfold gen_match, gen_rep. destruct b; simpl in *; auto; intros;

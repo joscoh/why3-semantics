@@ -72,22 +72,6 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma scast_eq_uip' {A1 A2 : Set} (H1 H2 : A1 = A2) (x y : A1):
-  x = y ->
-  scast H1 x = scast H2 y.
-Proof.
-  intros; subst. simpl. (*ugh Equations ruins this*)
-  assert (H2 = eq_refl) by (apply Cast.UIP). subst; reflexivity.
-Qed.
-
-Lemma scast_eq_uip_iff {A1 A2 : Set} (H1 H2 : A1 = A2) (x y : A1):
-  scast H1 x = scast H2 y <-> x = y.
-Proof.
-  split; [| apply scast_eq_uip'].
-  intros Hcast. subst. simpl in Hcast; subst.
-  assert (H2 = eq_refl) by (apply Cast.UIP). subst; reflexivity.
-Qed.
-
 Lemma scast_rev {A B: Set} (H: A = B) {x y} (Heq: x = scast H y) :
   y = scast (eq_sym H) x.
 Proof.
@@ -100,13 +84,6 @@ Proof.
   subst. reflexivity.
 Qed.
 
-Lemma scast_refl_uip {A: Set} (H: A = A) x:
-  scast H x = x.
-Proof.
-  assert (H = eq_refl) by apply UIP.
-  subst. reflexivity.
-Qed.
-
 Lemma scast_switch {A B C: Set} (H1: A = B) (H2: C = B) (x1: A) (x2: C):
   scast H1 x1 = scast H2 x2 ->
   x2 = scast (eq_trans H1 (eq_sym H2)) x1.
@@ -114,13 +91,10 @@ Proof.
   intros Hcast. subst. simpl in Hcast. subst. simpl. reflexivity.
 Qed.
 
-(*Basically UIP for x = y instead of x = x*)
-Lemma dec_uip_diff {A: Set} {x1 x2: A} 
-  (eq_dec: forall (x y: A), {x= y} + {x <> y}) 
-  (H1 H2: x1 = x2):
-  H1 = H2.
+Lemma scast_switch' {A B: Set} (H: A = B) (x: A) (y: B):
+  scast H x = y -> x = scast (eq_sym H) y.
 Proof.
-  subst. apply UIP_dec. auto.
+  intros Hy. subst. reflexivity.
 Qed.
 
 Require Import Stdlib.Lists.List.
@@ -166,3 +140,12 @@ Lemma cast_list_nth: forall {A B: Set} (l: list A) (Heq: A = B)
 Proof.
   intros. subst. reflexivity.
 Qed. 
+
+(*We need a transparent version*)
+Definition f_equal2 {A1 A2 B: Type} (f: A1 -> A2 -> B) {x1 y1: A1} {x2 y2: A2} (Heq1: x1 = y1) (Heq2: x2 = y2):
+  f x1 x2 = f y1 y2.
+Proof.
+  f_equal.
+  - exact Heq1.
+  - exact Heq2.
+Defined.

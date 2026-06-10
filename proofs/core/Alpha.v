@@ -254,11 +254,10 @@ End BijMap.
 Section Alpha.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
- {pd: pi_dom} {pdf: pi_dom_full gamma pd}
-  {vt: val_typevar} {pf: pi_funpred gamma_valid pd pdf}.
+ {pd: pi_dom} {vt: val_typevar} {pf: pi_funpred gamma_valid pd}.
 
-Notation term_rep := (term_rep gamma_valid pd pdf vt pf).
-Notation formula_rep := (formula_rep gamma_valid pd pdf vt pf).
+Notation term_rep := (term_rep gamma_valid pd pf vt).
+Notation formula_rep := (formula_rep gamma_valid pd pf vt).
 
 (*NOTE: instead of integer tags, we compare variables, since we care only
   about equality and not order.
@@ -1143,8 +1142,8 @@ Lemma match_val_single_alpha_p {ty: vty}
     forall x y t,
     amap_lookup (fst res) x = Some y ->
     amap_lookup s1 x = Some t <-> amap_lookup s2 y = Some t)
-  (match_val_single gamma_valid pd pdf vt ty p1 Hty1 d)
-  (match_val_single gamma_valid pd pdf vt ty p2 Hty2 d).
+  (match_val_single gamma_valid pd pf vt ty p1 Hty1 d)
+  (match_val_single gamma_valid pd pf vt ty p2 Hty2 d).
 Proof.
   revert ty d Hty1 Hty2. generalize dependent res. generalize dependent m.
   generalize dependent p2. induction p1 as [v1 | f1 tys1 ps1 IH | | p1 q1 IH1 IH2 | p1 v1 IH].
@@ -1234,8 +1233,8 @@ Proof.
       assert (Hbij3: bij_map (fst res1) (snd res1)) by (eapply alpha_equiv_p_bij; eauto).
       specialize (H1 _ _ Hbij1 _ Hbij3 Halpha _ (hlist_hd (cast_arg_list e a0)) (Forall_inv f0) (Forall_inv f)).
       (*Now we can reason by cases*)
-      destruct (match_val_single gamma_valid pd pdf vt _ p1 _ _) as [a1|] eqn : Hmatch1;
-      destruct (match_val_single gamma_valid pd pdf vt _ p2 _ _) as [a2|] eqn : Hmatch2;
+      destruct (match_val_single gamma_valid pd pf vt _ p1 _ _) as [a1|] eqn : Hmatch1;
+      destruct (match_val_single gamma_valid pd pf vt _ p2 _ _) as [a2|] eqn : Hmatch2;
       simpl in H2; try contradiction; auto.
       (*Both Some, use IH*)
       rewrite Halpha in Hfold.
@@ -1342,8 +1341,8 @@ Corollary match_val_single_alpha_p_full {ty: vty} {p1 p2: pattern}
     forall x y t,
     amap_lookup (fst res) x = Some y ->
     amap_lookup s1 x = Some t <-> amap_lookup s2 y = Some t)
-  (match_val_single gamma_valid pd pdf vt ty p1 Hty1 d)
-  (match_val_single gamma_valid pd pdf vt ty p2 Hty2 d).
+  (match_val_single gamma_valid pd pf vt ty p1 Hty1 d)
+  (match_val_single gamma_valid pd pf vt ty p2 Hty2 d).
 Proof.
   apply match_val_single_alpha_p with (m:=(amap_empty, amap_empty)); auto.
   - apply bij_empty. 
@@ -2773,8 +2772,7 @@ Proof.
         subst. simpl.
         (*Remove final cast*)
         destruct x as [n1 ty1]; destruct y as [n2 ty2]; simpl in *; subst.
-        assert (Heq = eq_refl) by (apply UIP_dec, vty_eq_dec). subst; unfold dom_cast; simpl.
-        eapply H; eauto.
+        rewrite dom_cast_refl. eapply H; eauto.
       * (*2nd case, easy*)
         unfold substi. vsym_eq x x1. vsym_eq y x2.
     + (*None case*)
@@ -2832,8 +2830,8 @@ Proof.
           assert (Hlookupb : amap_lookup a2 y = Some s1) by (rewrite <- Hopt; eauto).
           rewrite !extend_val_lookup with (t:=s1) by auto.
            (*Remove final cast*)
-          destruct x as [n1 x1]; destruct y as [n2 x2]; simpl in *; subst. 
-          unfold dom_cast; simpl.
+          destruct x as [n1 x1]; destruct y as [n2 x2]; simpl in *; subst.
+          rewrite dom_cast_refl. 
           (*Use typing result*)
           pose proof (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch1 _ _ Hlookupa) as Hsorteq. simpl in Hsorteq.
           destruct (sort_eq_dec (v_subst vt x2) (projT1 s1)); auto.
@@ -2977,8 +2975,7 @@ Proof.
         assert (e0 = eq_refl) by (apply UIP_dec, vsymbol_eq_dec).
         subst. simpl.
         destruct x as [n1 ty1]; destruct y as [n2 ty2]; simpl in *; subst.
-        assert (Heq = eq_refl) by (apply UIP_dec, vty_eq_dec). subst; unfold dom_cast; simpl.
-        eapply H; eauto.
+        rewrite dom_cast_refl. eapply H; eauto.
       * unfold substi. vsym_eq x x1. vsym_eq y x2.
     + intros x Hnone1 Hnone2.
       rewrite amap_set_lookup_none_iff in Hnone1, Hnone2.
@@ -3031,7 +3028,7 @@ Proof.
           rewrite !extend_val_lookup with (t:=s1) by auto.
            (*Remove final cast*)
           destruct x as [n1 x1]; destruct y as [n2 x2]; simpl in *; subst. 
-          unfold dom_cast; simpl.
+          rewrite dom_cast_refl.
           (*Use typing result*)
           pose proof (match_val_single_typs _ _ _ _ _ _ _ _ _ Hmatch1 _ _ Hlookupa) as Hsorteq. simpl in Hsorteq.
           destruct (sort_eq_dec (v_subst vt x2) (projT1 s1)); auto.
@@ -7171,6 +7168,91 @@ Proof.
   - apply (shape_ind_strictly_positive _ f1); auto.
 Qed.
 
+(*[pred_with_params] is preserved*)
+
+(*Proof is long but easy*)
+Lemma pred_with_params_shape ps tys t1 f1:
+  (forall t2 (Hsp: shape_t t1 t2),
+  pred_with_params_tm ps tys t1 ->
+  pred_with_params_tm ps tys t2) /\
+  (forall f2 (Hsp: shape_f f1 f2),
+  pred_with_params_fmla ps tys f1 ->
+  pred_with_params_fmla ps tys f2).
+Proof.
+  revert t1 f1; apply term_formula_ind; simpl; intros.
+  - alpha_case t2 Hsp; auto.
+  - alpha_case t2 Hsp; auto.
+  - alpha_case t2 Hsp. bool_hyps.
+    repeat simpl_sumbool.
+    nested_ind_case.
+    rewrite all2_cons in H2.
+    simpl in H0. bool_hyps.
+    rewrite IHl1; auto.
+    rewrite (Hp _ H1); auto.
+  - alpha_case t2 Hsp.
+    bool_hyps. rewrite (H _ H3), (H0 _ H4); auto.
+  - alpha_case t0 Hsp. bool_hyps.
+    rewrite (H _ H5), (H0 _ H7), (H1 _ H6); auto.
+  - alpha_case t2 Hsp.
+    bool_hyps.
+    rewrite (H _ H3); auto. simpl.
+    clear H H3 H1. repeat simpl_sumbool.
+    nested_ind_case.
+    rewrite all2_cons in H4. simpl in H2.
+    bool_hyps.
+    unfold id in *. rewrite IHps0; auto.
+    rewrite (Hp _ H4); auto.
+  - alpha_case t2 Hsp.
+    rewrite (H _ Hsp); auto.
+  - alpha_case f2 Hsp. bool_hyps.
+    repeat simpl_sumbool.
+    rewrite H0. simpl. clear H0.
+    nested_ind_case.
+    rewrite all2_cons in H3.
+    simpl in H1. bool_hyps.
+    rewrite IHtms; auto.
+    rewrite (Hp _ H0); auto.
+  - alpha_case f2 Hsp.
+    bool_hyps. rewrite (H _ H2); auto.
+  - alpha_case f2 Hsp.
+    bool_hyps.
+    rewrite (H _ H5), (H0 _ H4); auto.
+  - alpha_case f0 Hsp.
+    bool_hyps.
+    rewrite (H _ H5), (H0 _ H4); auto.
+  - alpha_case f2 Hsp.
+    rewrite (H _ Hsp); auto.
+  - alpha_case f2 Hsp; auto.
+  - alpha_case f2 Hsp; auto.
+  - alpha_case f2 Hsp.
+    bool_hyps.
+    rewrite (H _ H3), (H0 _ H4); auto.
+  - alpha_case f0 Hsp.
+    bool_hyps.
+    rewrite (H _ H5), (H0 _ H7), (H1 _ H6); auto.
+  - alpha_case f2 Hsp. bool_hyps.
+    rewrite (H _ H3); auto. simpl.
+    clear H H3 H1. repeat simpl_sumbool.
+    nested_ind_case.
+    rewrite all2_cons in H4. simpl in H2.
+    bool_hyps.
+    unfold id in *. rewrite IHps0; auto.
+    rewrite (Hp _ H4); auto.
+Qed.
+
+Definition pred_with_params_fmla_shape ps tys f :=
+  proj_fmla (pred_with_params_shape ps tys) f.
+
+(*From this, get alpha version*)
+Corollary pred_with_params_fmla_alpha ps tys f1 f2:
+  a_equiv_f f1 f2 ->
+  pred_with_params_fmla ps tys f1 ->
+  pred_with_params_fmla ps tys f2.
+Proof.
+  intros Ha. apply pred_with_params_fmla_shape.
+  eapply alpha_shape_f. apply Ha.
+Qed.
+
 End Shape.
   
 
@@ -8261,7 +8343,7 @@ Lemma safe_sub_ts_rep subs t
   (Hty2 : term_has_type gamma t ty):
   term_rep vv (safe_sub_ts subs t) ty Hty1 =
   term_rep (val_with_args pd vt vv (keylist subs)
-      (map_arg_list gamma_valid pd pdf vt pf vv 
+      (map_arg_list gamma_valid pd vt pf vv 
           (vals subs) (map snd (keylist subs)) 
           (map_snd_fst_len (elements subs)) Hall)) t ty Hty2.
 Proof.
@@ -8292,7 +8374,7 @@ Lemma safe_sub_fs_rep subs f
   (Hty2 : formula_typed gamma f):
   formula_rep vv (safe_sub_fs subs f) Hty1 =
   formula_rep (val_with_args pd vt vv (keylist subs)
-      (map_arg_list gamma_valid pd pdf vt pf vv 
+      (map_arg_list gamma_valid pd vt pf vv 
           (vals subs) (map snd (keylist subs)) 
           (map_snd_fst_len (elements subs)) Hall)) f Hty2.
 Proof.
@@ -8805,10 +8887,11 @@ Definition a_convert_gen {b: bool} (t: gen_term b) (vs: aset vsymbol) : gen_term
   | false => fun f => a_convert_f f vs
   end t.
 
-Lemma gen_rep_a_convert {b: bool} {gamma} (gamma_valid: valid_context gamma) pd pdf (pf: pi_funpred gamma_valid pd pdf) vt (vv: val_vars pd vt) (ty: gen_type b)
+Lemma gen_rep_a_convert {b: bool} {gamma} (gamma_valid: valid_context gamma) pd (pf: pi_funpred gamma_valid pd)
+  vt (vv: val_vars pd vt) (ty: gen_type b)
   (e: gen_term b) (vs: aset vsymbol) Hty1 Hty2:
-  gen_rep gamma_valid pd pdf pf vt vv ty (a_convert_gen e vs) Hty1 =
-  gen_rep gamma_valid pd pdf pf vt vv ty e Hty2.
+  gen_rep gamma_valid pd pf vt vv ty (a_convert_gen e vs) Hty1 =
+  gen_rep gamma_valid pd pf vt vv ty e Hty2.
 Proof.
   destruct b; simpl in *.
   - erewrite term_rep_irrel. erewrite <- a_convert_t_rep. reflexivity.
@@ -8934,11 +9017,10 @@ Qed. *)
 Section Rep.
 
 Context {gamma: context} (gamma_valid: valid_context gamma)
- {pd: pi_dom} {pdf: pi_dom_full gamma pd}
-  {vt: val_typevar} {pf: pi_funpred gamma_valid pd pdf}.
+ {pd: pi_dom} {vt: val_typevar} {pf: pi_funpred gamma_valid pd}.
 
-Notation term_rep := (term_rep gamma_valid pd pdf vt pf).
-Notation formula_rep := (formula_rep gamma_valid pd pdf vt pf).
+Notation term_rep := (term_rep gamma_valid pd pf vt).
+Notation formula_rep := (formula_rep gamma_valid pd pf vt).
 
 Lemma safe_sub_t_rep' (t1 t2: term) (x: string)
   (ty1 ty2: vty) (v: val_vars pd vt)

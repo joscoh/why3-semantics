@@ -439,14 +439,14 @@ Qed.
 (*Part 2: Semantics*)
 
 Lemma match_rep_ext {gamma} (gamma_valid: valid_context gamma)
-  pd pdf pf vt vv b (ty: gen_type b) ty1 d (ps1 ps2 : list (pattern * gen_term b))
+  pd pf vt vv b (ty: gen_type b) ty1 d (ps1 ps2 : list (pattern * gen_term b))
   Htyps1 Htyps2 Htms1 Htms2
   (Hfst: map fst ps1 = map fst ps2)
   (Hall: Forall2 (fun x y => forall vv ty Hty Hty2, 
-    gen_rep gamma_valid pd pdf pf vt vv ty (snd x) Hty = 
-    gen_rep gamma_valid pd pdf pf vt vv ty (snd y) Hty2) ps1 ps2):
-  match_rep' gamma_valid b pd pdf pf vt vv ty ty1 d ps1 Htyps1 Htms1 =
-  match_rep' gamma_valid b pd pdf pf vt vv ty ty1 d ps2 Htyps2 Htms2.
+    gen_rep gamma_valid pd pf vt vv ty (snd x) Hty = 
+    gen_rep gamma_valid pd pf vt vv ty (snd y) Hty2) ps1 ps2):
+  match_rep' gamma_valid b pd pf vt vv ty ty1 d ps1 Htyps1 Htms1 =
+  match_rep' gamma_valid b pd pf vt vv ty ty1 d ps2 Htyps2 Htms2.
 Proof.
   revert Htyps1 Htyps2 Htms1 Htms2. generalize dependent ps2.
   induction ps1 as [|p1 t1 IH]; intros [| p2 t2]; auto; intros Hfst Hall; inversion Hall.
@@ -477,22 +477,21 @@ Qed.
 (*Prove interesting case (match) separately, so we can generalize*)
 Lemma rewrite_rep_match_case (b: bool) {gamma} 
   (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd)
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar)
   (tm: term) (ty: vty) (ps: list (pattern * gen_term b))
   (IHtm: forall (vv : val_vars pd vt) (ty : vty) (Hty1 : term_has_type gamma tm ty)
     (Hty2 : term_has_type gamma (rewriteT tm) ty),
     term_name_wf tm ->
-    term_rep gamma_valid pd pdf vt pf vv (rewriteT tm) ty Hty2 =
-    term_rep gamma_valid pd pdf vt pf vv tm ty Hty1)
+    term_rep gamma_valid pd pf vt vv (rewriteT tm) ty Hty2 =
+    term_rep gamma_valid pd pf vt vv tm ty Hty1)
   (IHps: Forall
     (fun (tm: gen_term b) =>
     forall (vv : val_vars pd vt) (ty : gen_type b) (Hty1 : gen_typed gamma b tm ty)
     (Hty2 : gen_typed gamma b (gen_rewrite tm) ty),
     gen_name_wf tm ->
-    gen_rep gamma_valid pd pdf pf vt vv ty (gen_rewrite tm) Hty2 =
-    gen_rep gamma_valid pd pdf pf vt vv ty tm Hty1) (map snd ps))
+    gen_rep gamma_valid pd pf vt vv ty (gen_rewrite tm) Hty2 =
+    gen_rep gamma_valid pd pf vt vv ty tm Hty1) (map snd ps))
   (vv: val_vars pd vt)
   (ty1: gen_type b)
   (Hty1 : gen_typed gamma b (gen_match tm ty ps) ty1)
@@ -504,7 +503,7 @@ Lemma rewrite_rep_match_case (b: bool) {gamma}
     | None => gen_match tm ty ps
     end ty1)
   (Hwf: gen_name_wf (gen_match tm ty ps)):
-  gen_rep gamma_valid pd pdf pf vt vv ty1
+  gen_rep gamma_valid pd pf vt vv ty1
     match
     compile_bare_single b true (rewriteT tm) ty
       (map (fun x => (fst x, gen_rewrite (snd x))) ps)
@@ -512,7 +511,7 @@ Lemma rewrite_rep_match_case (b: bool) {gamma}
     | Some t2 => t2
     | None => gen_match tm ty ps
     end Hty2 = 
-  gen_rep gamma_valid pd pdf pf vt vv ty1 (gen_match tm ty ps) Hty1.
+  gen_rep gamma_valid pd pf vt vv ty1 (gen_match tm ty ps) Hty1.
 Proof.
   revert Hty2.
   destruct (compile_bare_single b true (rewriteT tm) ty
@@ -574,7 +573,7 @@ Proof.
   }
   apply wf_genmatch in Hwf. destruct Hwf as [Hwf1 Hwfall].
   (*Use correctness of pat match compilation*)
-  eapply (compile_bare_single_spec2 gamma_valid pd pdf pf vt vv
+  eapply (compile_bare_single_spec2 gamma_valid pd pf vt vv
     b ty1) with (Hty:=Htyr) (Htyps1:=Hpsr) (Htyps2:=Htsr)
     (Htym:=Hty2) in Hcomp; [|assumption].
   simpl in Hcomp.
@@ -591,20 +590,19 @@ Qed.
 
 (*And the semantics*)
 Lemma rewrite_rep {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd)
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar)
   t f:
   (forall (vv: val_vars pd vt) ty (Hty1: term_has_type gamma t ty)
     (Hty2: term_has_type gamma (rewriteT t) ty)
     (Hwf: term_name_wf t),
-    term_rep gamma_valid pd pdf vt pf vv (rewriteT t) ty Hty2 =
-    term_rep gamma_valid pd pdf vt pf vv t ty Hty1) /\
+    term_rep gamma_valid pd pf vt vv (rewriteT t) ty Hty2 =
+    term_rep gamma_valid pd pf vt vv t ty Hty1) /\
   (forall (vv: val_vars pd vt) (Hty1: formula_typed gamma f)
     (Hty2: formula_typed gamma (rewriteF f))
     (Hwf: fmla_name_wf f),
-    formula_rep gamma_valid pd pdf vt pf vv (rewriteF f)  Hty2 =
-    formula_rep gamma_valid pd pdf vt pf vv f Hty1).
+    formula_rep gamma_valid pd pf vt vv (rewriteF f)  Hty2 =
+    formula_rep gamma_valid pd pf vt vv f Hty1).
 Proof.
   revert t f; apply term_formula_ind; simpl rewriteT; auto;
   try solve[intros; try apply term_rep_irrel; try apply formula_rep_irrel].
@@ -694,33 +692,30 @@ Proof.
 Qed.
 
 Definition rewriteT_rep {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd)
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt)
   t ty (Hty1: term_has_type gamma t ty)
   (Hty2: term_has_type gamma (rewriteT t) ty)
   (Hwf: term_name_wf t):=
-  proj_tm (rewrite_rep gamma_valid pd pdf pf vt) t vv ty Hty1 Hty2 Hwf.
+  proj_tm (rewrite_rep gamma_valid pd pf vt) t vv ty Hty1 Hty2 Hwf.
 
 Definition rewriteF_rep {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd)
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt)
   f (Hty1: formula_typed gamma f)
   (Hty2: formula_typed gamma (rewriteF f))
   (Hwf: fmla_name_wf f):=
-  proj_fmla (rewrite_rep gamma_valid pd pdf pf vt) f vv Hty1 Hty2 Hwf.
+  proj_fmla (rewrite_rep gamma_valid pd pf vt) f vv Hty1 Hty2 Hwf.
 
 (*And combine with alpha to remove the wf*)
 
 Corollary rewriteT_rep' {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd)
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt)
   t ty (Hty1: term_has_type gamma t ty)
   (Hty2: term_has_type gamma (rewriteT' t) ty):
-  term_rep gamma_valid pd pdf vt pf vv (rewriteT' t) ty Hty2 =
-  term_rep gamma_valid pd pdf vt pf vv t ty Hty1.
+  term_rep gamma_valid pd pf vt vv (rewriteT' t) ty Hty2 =
+  term_rep gamma_valid pd pf vt vv t ty Hty1.
 Proof.
   unfold rewriteT'.
   erewrite rewriteT_rep by apply a_convert_all_t_name_wf.
@@ -728,13 +723,12 @@ Proof.
 Qed.
 
 Corollary rewriteF_rep' {gamma} (gamma_valid: valid_context gamma)
-  (pd: pi_dom) (pdf: pi_dom_full gamma pd)
-  (pf: pi_funpred gamma_valid pd pdf)
+  (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   (vt: val_typevar) (vv: val_vars pd vt)
   f (Hty1: formula_typed gamma f)
   (Hty2: formula_typed gamma (rewriteF' f)):
-  formula_rep gamma_valid pd pdf vt pf vv (rewriteF' f) Hty2 =
-  formula_rep gamma_valid pd pdf vt pf vv f Hty1.
+  formula_rep gamma_valid pd pf vt vv (rewriteF' f) Hty2 =
+  formula_rep gamma_valid pd pf vt vv f Hty1.
 Proof.
   unfold rewriteF'.
   erewrite rewriteF_rep by apply a_convert_all_f_name_wf.
