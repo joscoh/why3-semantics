@@ -283,7 +283,7 @@ Proof.
     - rewrite <- Hargs. rewrite in_map_iff.
       exists (nth i args vs_d); auto.
   }
-  erewrite (get_arg_list_hnth pd vt f tys tms (term_rep gamma_valid pd pf vt vv) 
+  erewrite (get_arg_list_hnth pd vt tys tms (term_rep gamma_valid pd pf vt vv) 
   (ltac:(intros; apply term_rep_irrel)) (s_params_Nodup f) (proj1' (fun_ty_inv Hty2)) (proj1' (proj2' (fun_ty_inv Hty2)))
   (proj1' (proj2' (proj2' (fun_ty_inv Hty2))))).
   Unshelve.
@@ -1022,7 +1022,7 @@ Proof.
     - rewrite <- Hargs. rewrite in_map_iff.
       exists (nth i args vs_d); auto.
   }
-  erewrite (get_arg_list_hnth pd vt p tys tms (term_rep gamma_valid pd pf vt vv) 
+  erewrite (get_arg_list_hnth pd vt tys tms (term_rep gamma_valid pd pf vt vv) 
   (ltac:(intros; apply term_rep_irrel)) (s_params_Nodup p) (proj1' (pred_val_inv Hty2)) (proj1' (proj2' (pred_val_inv Hty2)))
   (proj2' (proj2' (pred_val_inv Hty2)))).
   Unshelve.

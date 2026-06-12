@@ -459,7 +459,7 @@ Proof.
         apply check_args_prop with(x:=nth i (s_args c) vty_int) in H;
         auto. apply nth_In; auto.
     }
-    erewrite (get_arg_list_hnth pd vt c vs _
+    erewrite (get_arg_list_hnth pd vt vs _
      (term_rep gamma_valid pd pf vt
         (substi_mult pd vt vv
            (combine

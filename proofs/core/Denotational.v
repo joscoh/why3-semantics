@@ -160,7 +160,7 @@ Proof.
 Defined.
 
 Lemma get_arg_list_hnth (v: val_typevar)
-(s: fpsym) (vs: list vty) (ts: list term) 
+(vs: list vty) (ts: list term) 
 (reps: forall (t: term) (ty: vty),
   term_has_type gamma t ty ->
   domain (v_subst v ty))
@@ -212,17 +212,17 @@ Proof.
   apply s_params_Nodup. rewrite length_map; auto.
 Qed.
 
-Lemma arg_list_hnth_ty{s: fpsym} {ts: list term} 
-{vs: list vty} {args: list vty}
+Lemma arg_list_hnth_ty {ts: list term} 
+{vs: list vty} {args: list vty} {params}
 (Hlents : length ts = length args)
 (Hall : Forall
   (fun x : term * vty => term_has_type gamma (fst x) (snd x))
-  (combine ts (map (ty_subst (s_params s) vs) args)))
+  (combine ts (map (ty_subst params vs) args)))
 {i: nat} (Hi: i < length args): 
-term_has_type gamma (nth i ts tm_d) (ty_subst (s_params s) vs (nth i args vty_int)).
+term_has_type gamma (nth i ts tm_d) (ty_subst params vs (nth i args vty_int)).
 Proof.
   rewrite Forall_forall in Hall.
-  apply (Hall (nth i ts tm_d, ty_subst (s_params s) vs (nth i args vty_int))).
+  apply (Hall (nth i ts tm_d, ty_subst params vs (nth i args vty_int))).
   rewrite in_combine_iff; [| rewrite length_map; auto].
   exists i. split; try lia. intros.
   f_equal; [apply nth_indep |]; try lia.
@@ -1770,14 +1770,14 @@ Proof.
       (*Now we proceed by cases*)
       rewrite hlist_hd_cast with (Heq2:=cons_inj_hd Heqty).
       rewrite hlist_tl_cast with (Heq:=Heqty).
-      specialize (H3 (ty_subst (s_params f) vs2 ahd)
+      specialize (H2 (ty_subst (s_params f) vs2 ahd)
         (Forall_inv f0) (Forall_inv f1) (cons_inj_hd Heqty)
           (hlist_hd a3)).
-      revert H3.
+      revert H2.
       destruct_match_single l1 Hmatch1;
       destruct_match_single l2 Hmatch2; simpl; try contradiction; [|solve[auto]].
       intros Hsome1.
-      specialize (IH (hlist_tl a3) _ H4
+      specialize (IH (hlist_tl a3) _ H3
         (cons_inj_tl Heqty)
         (Forall_inv_tail f0) (Forall_inv_tail f1)).
       revert IH.

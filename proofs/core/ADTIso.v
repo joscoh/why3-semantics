@@ -14,8 +14,6 @@ Do in 2 pieces:
 2. define concrete isomorphism
 
  *)
-Print pi_dom.
-Print domain_nonempty.
 Record iso_pd {gamma: context} (gamma_valid: valid_context gamma)
   (pd1 pd2: pi_dom) :=
   mk_pd_iso {
@@ -29,13 +27,6 @@ Record iso_pd {gamma: context} (gamma_valid: valid_context gamma)
         @iso_f (s_cons ts srts) x = scast (pd_noadt ts srts Hts) x;
       g_noadt: forall ts srts (Hts: find_ts_in_ctx gamma ts = None) x,
         @iso_g (s_cons ts srts) x = scast (eq_sym (pd_noadt ts srts Hts)) x;
-      pd_ne_int: match domain_ne pd1 s_int with | @DE _ _ x => x end =
-                 match domain_ne pd2 s_int with | @DE _ _ x => x end;
-      pd_ne_real: match domain_ne pd1 s_real with | @DE _ _ x => x end =
-                  match domain_ne pd2 s_real with | @DE _ _  x => x end;
-      pd_ne_cons: forall ts srts,
-        match domain_ne pd1 (s_cons ts srts) with | @DE _ _ x => x end =
-          iso_g (match domain_ne pd2 (s_cons ts srts) with | @DE _ _ x => x end)
     }.
 
 Arguments iso_f {_} {_} {_} {_}.
@@ -51,10 +42,7 @@ Proof.
   destruct pdi as [f1 g1 inv1 inv2].
   apply (mk_pd_iso _ gamma_valid _ _ g1 f1 inv2 inv1
            (fun ts srts Hts =>  eq_sym (pd_noadt0 ts srts Hts)) g_noadt0); auto.
-  - intros ts srts Hts x. rewrite eq_sym_involutive. apply f_noadt0.
-  - intros ts srts. specialize (pd_ne_cons0 ts srts).
-    destruct (domain_ne pd1 (s_cons ts srts)); destruct (domain_ne pd2 (s_cons ts srts)); subst.
-    rewrite inv2. reflexivity.
+  intros ts srts Hts x. rewrite eq_sym_involutive. apply f_noadt0.
 Defined.
 
 (*Lift to domain*)
@@ -294,20 +282,6 @@ Proof.
   unfold substi.  destruct (vsymbol_eq_dec y v); subst; reflexivity.
 Qed.
 
-Lemma transport_dom_ne {gamma : context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
-  (pdi: iso_pd gamma_valid pd1 pd2): forall s,
-  match domain_ne pd1 s with
-  | @DE _ _ x => x
-  end = transport_dom (iso_g pdi) s match domain_ne pd2 s with
-                                    | @DE _ _ x => x
-          end.
-Proof.
-  intros [| | ts srts].
-  - simpl. rewrite (pd_ne_int gamma_valid pd1 pd2); auto.
-  - simpl. rewrite (pd_ne_real gamma_valid pd1 pd2); auto.
-  - simpl. rewrite (pd_ne_cons gamma_valid pd1 pd2 pdi ts srts); reflexivity.
-Qed.
-
 (*TODO: move*)
 Lemma amap_lookup_some (A B : Type) {EqDecision0 : base.RelDecision eq} {A_count : countable.Countable A}
   (m : amap A B) (x : A):
@@ -327,8 +301,8 @@ Proof.
   intros Hy. apply amap_lookup_some. exists y; auto.
 Qed.
 
-Require Import Denotational.
-Check match_val_single.
+Require Import Denotational Exhaustive.
+
 Lemma transport_match_val_single {gamma} (gamma_valid: valid_context gamma) {pd1 pd2}
   (pdi: iso_pd gamma_valid pd1 pd2) (pf: pi_funpred gamma_valid pd1) vt ty p (Hp: pattern_has_type gamma p ty)
   (d: domain (dom_aux pd1) (v_subst vt ty)):
@@ -403,14 +377,13 @@ Proof.
       unfold ty_subst_list. simpl_len. inversion Hp; subst; auto. }
     generalize dependent  (ty_subst_list (s_params c) vs2 (s_args c)).
     generalize dependent (sym_sigma_args c (map (v_subst vt) vs2)). intros s a2 tys' Hlen2; subst s.
-    (*pose proof (pat_constr_disj_map Hp) as Hdisj.*)
-    clear -IHps a2 (*Hdisj*). generalize dependent tys'.
+    clear -IHps a2. generalize dependent tys'.
     induction ps as [| phd ptl IHp]; intros [| thd ttl]; try discriminate.
     simpl. intros a2 Hlen Hallty.
     inversion IHps as [| ? ? Hhd Htl]; subst. specialize (IHp Htl); clear IHps Htl.
     specialize (Hhd thd (Forall_inv Hallty) (hlist_hd a2)). unfold cast_arg_list; simpl.
     rewrite transport_args_hd, transport_args_tl.
-    specialize (IHp (*(disj_map_cons_impl Hdisj)*) ttl (hlist_tl a2) (ltac:(lia)) (Forall_inv_tail Hallty)).
+    specialize (IHp ttl (hlist_tl a2) (ltac:(lia)) (Forall_inv_tail Hallty)).
     destruct (match_val_single _ pd1 _ _ _ _ _ _) as [m1|] eqn : Hmatch1;
     destruct (match_val_single _ pd2 _ _ _ _ _ _) as [m2|] eqn : Hmatch2; try contradiction; auto.
     destruct (iter_arg_list _ pd1 _ _ _ _) as [m3|] eqn : Hmatch3;
@@ -481,6 +454,55 @@ noeps_fmla (f: formula) : bool :=
   | Fmatch t _ ps => noeps_tm t && forallb (fun x => x) (map (fun x => noeps_fmla (snd x)) ps)
   end.
 
+Lemma transport_get_arg_list {gamma} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
+  (pdi: iso_pd gamma_valid pd1 pd2) (pf: pi_funpred gamma_valid pd1) (vt: val_typevar) (vv: val_vars pd1 vt)
+  (vs: list vty) (ts: list term) (args: list vty) (params: list typevar)
+  (Hn: NoDup params) (ts_len: length ts = length args) (vs_len: length vs = length params)
+  (Htys: Forall (fun x => term_has_type gamma (fst x) (snd x)) (combine ts (map (ty_subst params vs) args)))
+  (IH: Forall (fun tm => forall (vv: val_vars pd1 vt) (ty: vty) (Hty: term_has_type gamma tm ty),
+                   term_rep gamma_valid pd1 pf vt vv tm ty Hty =
+                     transport_dom (iso_g pdi) (v_subst vt ty)
+                       (term_rep gamma_valid pd2 (transport_pf gamma_valid pdi pf) vt
+                          (transport_val_vars (iso_f pdi) vv) tm ty Hty)) ts):
+  get_arg_list pd1 vt vs ts (term_rep gamma_valid pd1 pf vt vv) Hn ts_len vs_len Htys =
+  transport_args (iso_g pdi)
+    (get_arg_list pd2 vt vs ts (term_rep gamma_valid pd2 (transport_pf gamma_valid pdi pf) vt
+                                  (transport_val_vars (iso_f pdi) vv)) Hn ts_len vs_len Htys).
+Proof.
+  eapply hlist_ext_eq with (d:=s_int)(d':=dom_int _).
+  unfold sym_sigma_args, ty_subst_list_s. simpl_len. intros i Hi.
+  (*Lemmas for rewrite*)
+  assert (Heq:  v_subst vt (ty_subst params vs (nth i args vty_int)) =
+                  nth i (ty_subst_list_s params (map (v_subst vt) vs) args) s_int).
+  {
+    unfold ty_subst_list_s. rewrite map_nth_inbound with (d2:=vty_int) by auto.
+    apply funsym_subst_eq; auto.
+  }
+  assert (Htyi: term_has_type gamma (nth i ts tm_d) (ty_subst params vs (nth i args vty_int))).
+  {
+    apply arg_list_hnth_ty; auto.
+  }
+  erewrite (get_arg_list_hnth pd1 vt vs ts (term_rep gamma_valid pd1 pf vt vv) _ Hn ts_len).
+  Unshelve.
+  2: exact Hi.
+  2: intros; apply term_rep_irrel.
+  2: exact Heq. 
+  2: exact Htyi.
+  (*Now the other side*)
+  unfold transport_args.
+  rewrite hlist_map_hnth with (d2:=dom_int _) by solve_len.
+  erewrite (get_arg_list_hnth pd2 vt vs ts (term_rep gamma_valid pd2 _ vt _) _ Hn ts_len).
+  Unshelve.
+  2: exact Hi.
+  2: intros; apply term_rep_irrel.
+  2: exact Heq. 
+  2: exact Htyi.
+  rewrite transport_dom_cast. f_equal.
+  rewrite Forall_forall in IH.
+  assert (Hn': In (nth i ts tm_d) ts) by (apply nth_In; lia).
+  apply IH; auto.
+Qed.     
+
 
 Lemma iso_denote_aux {gamma : context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
   (pdi: iso_pd gamma_valid pd1 pd2)
@@ -507,46 +529,12 @@ Proof.
     intros f1 tys tms IH Heps vv ty Hty.
     simpl_rep_full. unfold cast_dom_vty.
     rewrite transport_dom_cast. f_equal.
-    rewrite transport_dom_cast. f_equal.
-    unfold transport_funs.
+    rewrite transport_dom_cast.
+    f_equal. unfold transport_funs.
     rewrite transport_dom_inv1. f_equal.
-    unfold fun_arg_list.
-    eapply hlist_ext_eq with (d:=s_int)(d':=dom_int _).
-    unfold sym_sigma_args, ty_subst_list_s. simpl_len. intros i Hi.
-    (*Lemmas for rewrite*)
-    assert (Heq:  v_subst vt (ty_subst (s_params f1) tys (nth i (s_args f1) vty_int)) =
-                    nth i (ty_subst_list_s (s_params f1) (map (v_subst vt) tys) (s_args f1)) s_int).
-    {
-      unfold ty_subst_list_s. rewrite map_nth_inbound with (d2:=vty_int) by auto.
-      apply funsym_subst_eq; [apply s_params_Nodup|]. inversion Hty; auto.
-    }
-    assert (Htyi: term_has_type gamma (nth i tms tm_d) (ty_subst (s_params f1) tys (nth i (s_args f1) vty_int))).
-    {
-      inversion Hty; subst.
-      apply arg_list_hnth_ty; auto.
-    }
-    erewrite (get_arg_list_hnth pd1 vt f1 tys tms (term_rep gamma_valid pd1 pf vt vv) _ (s_params_Nodup f1)
-                (proj1' (fun_ty_inv Hty))).
-    Unshelve.
-    2: exact Hi.
-    2: intros; apply term_rep_irrel.
-    2: exact Heq. 
-    2: exact Htyi.
-    (*Now the other side*)
-    unfold transport_args.
-    rewrite hlist_map_hnth with (d2:=dom_int _) by solve_len.
-    erewrite (get_arg_list_hnth pd2 vt f1 tys tms (term_rep gamma_valid pd2 _ vt _) _ (s_params_Nodup f1)
-                (proj1' (fun_ty_inv Hty))).
-    Unshelve.
-    2: exact Hi.
-    2: intros; apply term_rep_irrel.
-    2: exact Heq. 
-    2: exact Htyi.
-    rewrite transport_dom_cast. f_equal.
-    rewrite Forall_forall in IH.
-    assert (Hn: In (nth i tms tm_d) tms) by (apply nth_In; inversion Hty; lia).
-    apply IH; auto.
-    simpl in Heps. unfold is_true in Heps. rewrite forallb_map, forallb_forall in Heps. auto.
+    apply  transport_get_arg_list.
+    simpl in Heps. unfold is_true in Heps. rewrite forallb_map, forallb_forall in Heps.
+    revert IH. apply Forall_impl_strong. auto.
   - (*Tlet*)
     intros tm1 v tm2 IH1 IH2 Heps vv ty Hty. simpl in Heps. rewrite andb_true in Heps. destruct_all.
     simpl_rep_full.
@@ -564,6 +552,10 @@ Proof.
     destruct Heps as [Heps1 Hepsp].
     simpl_rep_full.
     rewrite IHtm by auto.
+    (*use exhaustive result to rule out inhab case (which may not be iso)*)
+    pose proof (well_typed_sem_exhaust gamma_valid pd1 pf vt vv true ty tm ty1 ps Hty
+                  (proj1' (ty_match_inv Hty))) as Hexhaust.
+    rewrite IHtm in Hexhaust by auto.
     clear IHtm Heps1.
     generalize dependent (term_rep gamma_valid pd2 (transport_pf gamma_valid pdi pf) vt
                             (transport_val_vars (iso_f pdi) vv) tm ty1
@@ -571,9 +563,9 @@ Proof.
     iter_match_gen Hty Htm Hpat Hty1.
     revert vv.
     induction ps as [| [p1 tm1] ptl IHp]; simpl.
-    + intros. apply transport_dom_ne.
-    + intros vv Htm Hpat Hty1 d.
-      (*TODO: need lemma about [match_val_single]*)
+    + intros; destruct_all; contradiction.
+    + intros vv Htm Hpat Hty1 d Hexhaust.
+      (*use lemma about [match_val_single]*)
       pose proof (transport_match_val_single gamma_valid pdi pf vt _ _
                     (Forall_inv Hpat) (transport_dom (iso_g pdi) _ d)) as Hmatch.
       rewrite transport_dom_inv2 in Hmatch.
@@ -602,7 +594,130 @@ Proof.
            rewrite Hmatch1 in Hlook1. rewrite Hmatch2 in Hlook2. contradiction.
         -- reflexivity.
       * (*IH case*)
-        inversion IHps; auto.
+        destruct Hexhaust as [p' [Htyp' [Hp' Hmatchp']]].
+        destruct Hp' as [Hp' | Hinp'].
+        -- subst. (*contradicts [match_val_single] none*)
+           simpl in Hmatchp', Hmatch1.
+           erewrite match_val_single_irrel in Hmatch1.
+           rewrite Hmatch1 in Hmatchp'. discriminate.
+        -- inversion IHps; subst; eapply IHp; eauto. 
   - (*Teps*)
     intros f v IH Heps vv ty Hty. discriminate. (*We do NOT support epsilon*)
-  
+  - (*Fpred*)
+    intros p tys tms IH Heps vv Hty.
+    simpl_rep_full.  unfold transport_preds.
+    f_equal.
+    apply  transport_get_arg_list.
+    simpl in Heps. unfold is_true in Heps. rewrite forallb_map, forallb_forall in Heps.
+    revert IH. apply Forall_impl_strong. auto.
+  - (*Fquant*)
+    intros q v f IH Heps vv Hty. simpl_rep_full.
+    assert (Heq: forall d, formula_rep gamma_valid pd1 pf vt (substi pd1 vt vv v d) f (typed_quant_inv Hty) =
+        formula_rep gamma_valid pd2 (transport_pf gamma_valid pdi pf) vt
+          (substi pd2 vt (transport_val_vars (iso_f pdi) vv) v
+             (transport_dom (iso_f pdi) _ d)) f (typed_quant_inv Hty)).
+    {
+      simpl in Heps.
+      intros d. rewrite IH by auto. apply fmla_change_vv. intros x Hx.
+      unfold substi, transport_val_vars. destruct (vsymbol_eq_dec x v); subst; auto.
+    }
+    destruct q; apply all_dec_eq.
+    + setoid_rewrite Heq. split.
+      * intros Hall d. specialize (Hall (transport_dom (iso_g pdi) _ d)).
+        rewrite transport_dom_inv2 in Hall. auto.
+      * intros Hall d. apply Hall.
+    + setoid_rewrite Heq. split; intros [d Hrep].
+      * eauto.
+      * exists (transport_dom (iso_g pdi) _ d). rewrite transport_dom_inv2. auto.
+  - (*Feq*)
+    intros ty t1 t2 IH1 IH2 Heps vv Hty. simpl in Heps. rewrite andb_true in Heps.
+    destruct Heps. simpl_rep_full. rewrite IH1, IH2; auto.
+    apply all_dec_eq. split; intros Hrep.
+    + apply (f_equal (transport_dom (iso_f pdi) _)) in Hrep. rewrite !transport_dom_inv2 in Hrep. auto.
+    + f_equal; auto.
+  - (*Fbinop*)
+    intros b f1 f2 IH1 IH2 Heps vv Hty.  simpl in Heps. rewrite andb_true in Heps.
+    destruct Heps. simpl_rep_full. rewrite IH1, IH2; auto.
+  - (*Fnot*)
+    simpl.
+    intros f IH Heps vv Hty. rewrite IH; auto.
+  - (*Ftrue*) simpl; auto.
+  - (*Ffalse*) simpl; auto.
+  - (*Flet*)
+    intros tm1 v f IH1 IH2 Heps vv Hty. simpl in Heps. rewrite andb_true in Heps. destruct_all.
+    simpl_rep_full.
+    rewrite IH2, IH1; auto.
+    apply fmla_change_vv.
+    intros x Hinx.
+    rewrite transport_val_vars_substi, transport_dom_inv2. reflexivity.
+  - (*Fif*)
+    intros f1 f2 f3 IH1 IH2 IH3 Heps vv Hty. simpl in Heps. rewrite !andb_true in Heps; destruct_all. 
+    simpl_rep_full. rewrite IH1, IH2, IH3 by auto.
+    destruct (formula_rep _ _ _ _ _ _ _); reflexivity.
+  - (*Tmatch*)
+    intros tm ty1 ps IHtm IHps Heps vv Hty. simpl in Heps. rewrite andb_true in Heps.
+    destruct Heps as [Heps1 Hepsp].
+    simpl_rep_full.
+    rewrite IHtm by auto.
+    (*use exhaustive result to rule out inhab case (which may not be iso)*)
+    pose proof (well_typed_sem_exhaust gamma_valid pd1 pf vt vv false tt tm ty1 ps Hty
+                  (proj1' (typed_match_inv Hty))) as Hexhaust.
+    rewrite IHtm in Hexhaust by auto.
+    clear IHtm Heps1.
+    generalize dependent (term_rep gamma_valid pd2 (transport_pf gamma_valid pdi pf) vt
+                            (transport_val_vars (iso_f pdi) vv) tm ty1
+                            (proj1' (typed_match_inv Hty))).
+    iter_match_gen Hty Htm Hpat Hty1.
+    revert vv.
+    induction ps as [| [p1 tm1] ptl IHp]; simpl.
+    + intros; destruct_all; contradiction.
+    + intros vv Htm Hpat Hty1 d Hexhaust.
+      (*use lemma about [match_val_single]*)
+      pose proof (transport_match_val_single gamma_valid pdi pf vt _ _
+                    (Forall_inv Hpat) (transport_dom (iso_g pdi) _ d)) as Hmatch.
+      rewrite transport_dom_inv2 in Hmatch.
+      simpl in Hepsp. rewrite andb_true in Hepsp; destruct Hepsp.
+      destruct (match_val_single _ pd1 _ _ _ _ _ _) as [m1|] eqn : Hmatch1;
+        destruct (match_val_single _ pd2 _ _ _ _ _ _) as [m2|] eqn : Hmatch2; try solve[contradiction].
+      * simpl in Hmatch. rewrite (Forall_inv IHps) by auto.
+        (*From [match_val_single] result, get equality*)
+        apply fmla_change_vv. intros x Hinx.
+        unfold transport_val_vars.
+        unfold extend_val_with_list.
+        destruct (amap_lookup m1 x) as [y1|] eqn : Hlook1;
+        destruct (amap_lookup m2 x) as [y2|] eqn : Hlook2.
+        -- specialize (Hmatch _ _ _ Hlook1 Hlook2). destruct Hmatch as [Heq1 Heq2].
+           destruct y1; simpl in *. subst.
+           destruct (sort_eq_dec _ _); auto.
+           rewrite !transport_dom_cast, transport_dom_inv2, !dom_cast_compose.
+           apply dom_cast_eq.
+        -- apply match_val_single_fv in Hmatch1, Hmatch2.
+           apply amap_lookup_some_impl in Hlook1.
+           apply amap_lookup_none in Hlook2.
+           rewrite Hmatch1 in Hlook1. rewrite Hmatch2 in Hlook2. contradiction.
+        -- apply match_val_single_fv in Hmatch1, Hmatch2.
+           apply amap_lookup_some_impl in Hlook2.
+           apply amap_lookup_none in Hlook1.
+           rewrite Hmatch1 in Hlook1. rewrite Hmatch2 in Hlook2. contradiction.
+        -- reflexivity.
+      * (*IH case*)
+        destruct Hexhaust as [p' [Htyp' [Hp' Hmatchp']]].
+        destruct Hp' as [Hp' | Hinp'].
+        -- subst. (*contradicts [match_val_single] none*)
+           simpl in Hmatchp', Hmatch1.
+           erewrite match_val_single_irrel in Hmatch1.
+           rewrite Hmatch1 in Hmatchp'. discriminate.
+        -- inversion IHps; subst; eapply IHp; eauto.
+Qed.
+
+Definition transport_term_rep {gamma : context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
+  (pdi: iso_pd gamma_valid pd1 pd2)
+  (pf: pi_funpred gamma_valid pd1)
+  (vt: val_typevar) t (Heps: noeps_tm t) (vv: val_vars pd1 vt) (ty : vty) (Hty: term_has_type gamma t ty) :=
+  proj_tm (iso_denote_aux gamma_valid pdi pf vt) t Heps vv ty Hty.
+
+Definition transport_formula_rep  {gamma : context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
+  (pdi: iso_pd gamma_valid pd1 pd2)
+  (pf: pi_funpred gamma_valid pd1)
+  (vt: val_typevar) f (Heps: noeps_fmla f) (vv: val_vars pd1 vt) (Hty: formula_typed gamma f) :=
+  proj_fmla (iso_denote_aux gamma_valid pdi pf vt) f Heps vv Hty.

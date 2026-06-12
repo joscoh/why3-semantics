@@ -1167,7 +1167,7 @@ Proof.
       rewrite hnth_cast_arg_list.
       unfold fun_arg_list.
       assert (Hi': i < length (s_args c)) by lia.
-      rewrite (get_arg_list_hnth pd vt id_fs args (map Tvar (fst z))
+      rewrite (get_arg_list_hnth pd vt args (map Tvar (fst z))
         (term_rep new_gamma_valid pd new_pf vt (substi_mult pd vt vv (fst z) h))
         (ltac:(intros; apply term_rep_irrel))
         (s_params_Nodup (new_constr new_constr_name badnames c))
@@ -1188,7 +1188,7 @@ Proof.
       unfold sym_sigma_args, ty_subst_list_s. rewrite !length_map. intros i Hi.
       unfold fun_arg_list.
       assert (Hi': i < length (fst z)) by lia.
-      rewrite (get_arg_list_hnth pd vt id_fs args (map Tvar (fst z))
+      rewrite (get_arg_list_hnth pd vt  args (map Tvar (fst z))
         (term_rep new_gamma_valid pd new_pf vt (substi_mult pd vt vv (fst z) (cast_arg_list Hcast al)))
         (ltac:(intros; apply term_rep_irrel))
         (s_params_Nodup (new_constr new_constr_name badnames c))
@@ -1732,7 +1732,7 @@ Proof.
         destruct (string_dec a_ts a_ts); auto. contradiction.
       }
       (*Now finally simplify the [get_arg_list]*)
-      rewrite (get_arg_list_hnth pd vt id_fs (ty :: args) tl) with (Heq:=Heq7)(Hty:=Htyith); auto; [|solve_len].
+      rewrite (get_arg_list_hnth pd vt (ty :: args) tl) with (Heq:=Heq7)(Hty:=Htyith); auto; [|solve_len].
       rewrite rewrite_dom_cast, !dom_cast_compose. gen_dom_cast.
       clear Heq1. clear Heq6. clear Heq7.
       revert Htyith.
@@ -3220,7 +3220,7 @@ Proof.
     reflexivity.
   }
   (*Finally, we simplify arg list*)
-  rewrite (get_arg_list_hnth pd vt id_fs  
+  rewrite (get_arg_list_hnth pd vt  
     (vty_var tsa :: map vty_var (ts_args (adt_name a)))  
     (map Tvar zvars)
     (term_rep gamma1_valid pd (new_pf gamma_valid gamma1_valid pd pf) vt

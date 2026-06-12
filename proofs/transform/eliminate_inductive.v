@@ -2408,7 +2408,7 @@ Proof.
       inversion Htyf; subst; auto.
       apply arg_list_hnth_ty; auto.
     }
-    erewrite (get_arg_list_hnth pd vt p vs ts
+    erewrite (get_arg_list_hnth pd vt vs ts
     (term_rep gamma_valid pd pf vt vv) (ltac:(intros; apply term_rep_irrel)) (s_params_Nodup p)
     (proj1' (pred_val_inv Htyf)) (proj1' (proj2' (pred_val_inv Htyf))))
     with(Heq:=Heq1)(Hty:=Hty1); auto.
@@ -2427,7 +2427,7 @@ Proof.
       inversion Htypred; subst.
       apply arg_list_hnth_ty; auto.
     }
-    erewrite (get_arg_list_hnth pd vt p (map vty_var (s_params p))
+    erewrite (get_arg_list_hnth pd vt (map vty_var (s_params p))
     (snd (get_indprop_args (a_convert_all_f constr (list_to_aset zs))))
     (term_rep gamma_valid pd pf vt
         (substi_multi_let gamma_valid pd pf vt
@@ -2526,7 +2526,7 @@ Proof.
       rewrite hnth_cast_arg_list.
       unfold pred_arg_list.
       (*A final application of get_arg_list_hnth*)
-      erewrite (get_arg_list_hnth pd vt p vs ts
+      erewrite (get_arg_list_hnth pd vt vs ts
       (term_rep gamma_valid pd
               (interp_with_Ps gamma_valid pd pf (map fst (get_indpred l))
                  (inv_Ps gamma_valid pd vt vv pf l_in)) vt vv) 
