@@ -721,3 +721,280 @@ Definition transport_formula_rep  {gamma : context} (gamma_valid: valid_context 
   (pf: pi_funpred gamma_valid pd1)
   (vt: val_typevar) f (Heps: noeps_fmla f) (vv: val_vars pd1 vt) (Hty: formula_typed gamma f) :=
   proj_fmla (iso_denote_aux gamma_valid pdi pf vt) f Heps vv Hty.
+
+(*Part 2: Full interp*)
+Require Import FullInterp.
+
+Definition noeps_funpred (d: funpred_def) : bool :=
+  match d with
+  | fun_def _ _ body => noeps_tm body
+  | pred_def _ _ body => noeps_fmla body
+  end.
+
+Definition noeps_indpred (d: indpred_def) : bool :=
+  match d with
+  | ind_def _ l => forallb noeps_fmla (map snd l)
+  end.
+
+Definition noeps_def (d: def) : bool :=
+  match d with
+  | datatype_def _ => true
+  | recursive_def l => forallb noeps_funpred l
+  | inductive_def l => forallb noeps_indpred l
+  | nonrec_def f => noeps_funpred f
+  | _ => true
+  end.
+
+Definition noeps_context (gamma: context) : bool :=
+  forallb noeps_def gamma.
+
+Lemma noeps_context_fun_defined {gamma f vs body}
+  (Heps: noeps_context gamma)
+  (Hfun: fun_defined gamma f vs body):
+  noeps_tm body.
+Proof.
+  unfold fun_defined in Hfun.
+  unfold noeps_context in Heps.
+  unfold is_true in Heps; rewrite forallb_forall in Heps. 
+  destruct Hfun as [[fs [Hinfs Hinf]] | Hfs].
+  - rewrite in_mutfuns in Hinfs.
+    apply Heps in Hinfs.
+    simpl in Hinfs.
+    rewrite forallb_forall in Hinfs. apply Hinfs in Hinf.
+    exact Hinf.
+  - apply Heps in Hfs. exact Hfs.
+Qed.
+
+Lemma noeps_context_pred_defined {gamma f vs body}
+  (Heps: noeps_context gamma)
+  (Hpred: pred_defined gamma f vs body):
+  noeps_fmla body.
+Proof.
+  unfold pred_defined in Hpred.
+  unfold noeps_context in Heps.
+  unfold is_true in Heps; rewrite forallb_forall in Heps. 
+  destruct Hpred as [[fs [Hinfs Hinf]] | Hfs].
+  - rewrite in_mutfuns in Hinfs.
+    apply Heps in Hinfs.
+    simpl in Hinfs.
+    rewrite forallb_forall in Hinfs. apply Hinfs in Hinf.
+    exact Hinf.
+  - apply Heps in Hfs. exact Hfs.
+Qed.
+
+Lemma noeps_context_indpred {gamma l p fs f}
+  (Heps: noeps_context gamma)
+  (l_in: In l (indpreds_of_context gamma))
+  (p_in: In (p, fs) l)
+  (f_in: In f fs):
+  noeps_fmla f.
+Proof.
+  unfold is_true, noeps_context in Heps.
+  rewrite forallb_forall in Heps.
+  apply in_indpreds_of_context in l_in.
+  destruct l_in as [l2 [Hinl2 Hl]]; subst.
+  apply Heps in Hinl2. simpl in Hinl2.
+  unfold get_indpred in p_in.
+  rewrite in_map_iff in p_in.
+  destruct p_in as [i [Hp Hini]].
+  rewrite forallb_forall in Hinl2.
+  apply Hinl2 in Hini.
+  unfold indpred_def_to_indpred in Hp.
+  destruct i; inversion Hp; subst. simpl in Hini.
+  rewrite forallb_forall in Hini.
+  apply Hini in f_in; auto.
+Qed.
+ 
+Lemma transport_val_vars_with_args {pd1 pd2} (f: forall s, dom_aux pd1 s -> dom_aux pd2 s)
+  (vt: val_typevar) (vv: val_vars pd1 vt) vs srts (al: arg_list (domain (dom_aux pd1)) srts) (x: vsymbol):
+      transport_val_vars f (val_with_args pd1 vt vv vs al)  x =
+        val_with_args pd2 vt (transport_val_vars f vv) vs (transport_args f al) x.
+Proof.
+  unfold transport_val_vars.
+  generalize dependent srts. induction vs as [| vhd vtl IH]; simpl; auto.
+  intros [| shd stl] al.
+  - pose proof (hlist_nil al) as Hal. rewrite Hal. unfold transport_args.
+    rewrite hlist_map_equation_1. reflexivity.
+  - pose proof (hlist_inv al) as Hal. rewrite Hal. unfold transport_args.
+    rewrite hlist_map_equation_2. destruct (vty_eq_dec _ _); auto.
+    destruct (vsymbol_eq_dec _ _); auto.
+    rewrite transport_dom_cast. reflexivity.
+Qed.
+
+Lemma val_with_args_ext {pd} vt (vv1 vv2: val_vars pd vt) vs srts (al: arg_list (domain (dom_aux pd)) srts) x:
+  (vv1 x = vv2 x) ->
+  val_with_args pd vt vv1 vs al x = val_with_args pd vt vv2 vs al x.
+Proof.
+  intros Hext.
+  generalize dependent srts. induction vs as [| vhd vtl IH]; auto.
+  intros [| shd stl] al; simpl.
+  - pose proof (hlist_nil al) as Hal. rewrite Hal; auto.
+  - pose proof (hlist_inv al) as Hal. rewrite Hal.
+    destruct (vty_eq_dec _ _); auto.
+    destruct (vsymbol_eq_dec _ _); auto.
+Qed.
+
+Lemma transport_val_vars_upd_vv_args_srts {pd1 pd2}(f: forall s, dom_aux pd1 s -> dom_aux pd2 s)
+  params srts Hlen Hn vt vv x :
+  transport_val_vars f (upd_vv_args_srts params srts Hlen Hn pd1 vt vv) x =
+    upd_vv_args_srts params srts Hlen Hn pd2 vt (transport_val_vars f vv) x.
+Proof.
+  unfold transport_val_vars.
+  unfold upd_vv_args_srts.
+  rewrite !transport_dom_cast. f_equal.
+  unfold upd_vv_args. rewrite !transport_dom_cast. reflexivity.
+Qed.
+
+Lemma upd_vv_args_ext params srts Hlen Hn pd vt (vv1 vv2: val_vars pd vt) x:
+  (forall x, vv1 x = vv2 x) ->
+  upd_vv_args_srts params srts Hlen Hn pd vt vv1 x =
+    upd_vv_args_srts params srts Hlen Hn pd vt vv2 x.
+Proof.
+  intros Hext. unfold upd_vv_args_srts. f_equal.
+  unfold upd_vv_args. f_equal. auto.
+Qed.
+
+Lemma transport_val_vars_inv2 {gamma: context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
+  (pdi: iso_pd gamma_valid pd1 pd2) {vt} (vv: val_vars pd2 vt) x:
+  transport_val_vars (iso_f pdi) (transport_val_vars (iso_g pdi) vv) x = vv x.
+Proof.
+  unfold transport_val_vars. apply transport_dom_inv2.
+Qed.
+
+Definition transport_indpred_Ps {pd1 pd2} (f: forall s, dom_aux pd2 s -> dom_aux pd1 s)
+  {l} (Ps: hlist (fun (p': predsym) =>
+                    forall srts, arg_list (domain (dom_aux pd1)) (sym_sigma_args p' srts) -> bool) l):
+  hlist (fun (p': predsym) => forall srts, arg_list (domain (dom_aux pd2)) (sym_sigma_args p' srts) -> bool) l :=
+  hlist_map _ _ (fun p' g srts a => (g srts (transport_args f a))) _ Ps.
+
+Lemma hlist_hd_transport_indpred_Ps  {pd1 pd2} (f: forall s, dom_aux pd2 s -> dom_aux pd1 s)
+  {x l} (Ps: hlist (fun (p': predsym) =>
+                      forall srts, arg_list (domain (dom_aux pd1)) (sym_sigma_args p' srts) -> bool) (x :: l)) srts a:
+  hlist_hd (transport_indpred_Ps f Ps) srts a = hlist_hd Ps srts (transport_args f a).
+Proof.
+  unfold transport_indpred_Ps.
+  pose proof (hlist_inv Ps) as Hps; rewrite Hps, hlist_map_equation_2; reflexivity.
+Qed.
+
+Lemma hlist_tl_transport_indpred_Ps  {pd1 pd2} (f: forall s, dom_aux pd2 s -> dom_aux pd1 s)
+  {x l} (Ps: hlist (fun (p': predsym) =>
+                      forall srts, arg_list (domain (dom_aux pd1)) (sym_sigma_args p' srts) -> bool) (x :: l)):
+  hlist_tl (transport_indpred_Ps f Ps) = transport_indpred_Ps f (hlist_tl Ps).
+Proof.
+  unfold transport_indpred_Ps.
+  pose proof (hlist_inv Ps) as Hps; rewrite Hps, hlist_map_equation_2; reflexivity.
+Qed.
+
+Lemma transport_get_hlist_elt {pd1 pd2} (f: forall s, dom_aux pd2 s -> dom_aux pd1 s) {l}
+  (Ps: hlist (fun (p' : predsym) => forall srts,
+                  arg_list (domain (dom_aux pd1)) (sym_sigma_args p' srts) -> bool) l)
+  p Hin srts a:
+      get_hlist_elt predsym_eq_dec (transport_indpred_Ps f Ps) p Hin srts a =
+        get_hlist_elt predsym_eq_dec Ps p Hin srts (transport_args f a).
+Proof.
+  generalize dependent l.
+  induction l as [| x t IH]; simpl; [discriminate|].
+  intros Ps Hin.
+  destruct (predsym_eq_dec p x); subst; auto.
+  - unfold eq_rect_r. unfold eq_rect. simpl.
+    apply hlist_hd_transport_indpred_Ps.
+  - rewrite hlist_tl_transport_indpred_Ps.
+    apply IH.
+Qed.
+
+Lemma transport_find_apply_pred {gamma} (gamma_valid: valid_context gamma)
+  {pd1 pd2} (pdi: iso_pd gamma_valid pd1 pd2) (pf: pi_funpred gamma_valid pd1) l Ps (p': predsym) srts'
+  (a': arg_list (domain (dom_aux pd2)) (sym_sigma_args p' srts')):
+    find_apply_pred gamma_valid pd1 pf l (transport_indpred_Ps (iso_f pdi) Ps) p' srts'
+      (transport_args (iso_g pdi) a') =
+    find_apply_pred gamma_valid pd2 (transport_pf gamma_valid pdi pf) l Ps p' srts' a'.
+Proof.
+  induction Ps; simpl; auto.
+  destruct (predsym_eq_dec p' x); subst; auto.
+  unfold eq_rec_r; simpl.
+  rewrite  hlist_hd_transport_indpred_Ps. simpl. rewrite transport_args_inv2.
+  reflexivity.
+Qed.              
+
+Lemma transport_full_interp {gamma: context} (gamma_valid: valid_context gamma)  {pd1 pd2: pi_dom}
+  (pdi: iso_pd gamma_valid pd1 pd2)
+  (pf: pi_funpred gamma_valid pd1)
+  (Hn: noeps_context gamma):
+  full_interp gamma_valid pd1 pf ->
+  full_interp gamma_valid pd2 (transport_pf gamma_valid pdi pf).
+Proof.
+  intros [Hfuns [Hpreds [Hind1 Hind2]]]. constructor;split_all.
+  - clear -Hfuns Hn. intros f args body f_in srts srts_len a vt vv.
+    specialize (Hfuns f args body f_in srts srts_len (transport_args (iso_g pdi) a) vt
+                  (transport_val_vars (iso_g pdi) vv)).
+    simpl in Hfuns |- *.
+    unfold transport_funs. rewrite Hfuns.
+    rewrite !transport_dom_cast. f_equal.
+    assert (Hnoeps: noeps_tm body) by (clear -f_in Hn ;apply noeps_context_fun_defined in f_in; auto).
+    rewrite (transport_term_rep gamma_valid pdi pf) by assumption.
+    rewrite transport_dom_inv2.
+    apply tm_change_vv.
+    intros x Hinx.
+    rewrite transport_val_vars_with_args.
+    rewrite transport_args_inv2.
+    apply val_with_args_ext.
+    rewrite transport_val_vars_upd_vv_args_srts.
+    apply upd_vv_args_ext. intros y.
+    apply transport_val_vars_inv2.
+  - clear -Hpreds Hn. intros p args body p_in srts srts_len a vt vv.
+    specialize (Hpreds p args body p_in srts srts_len (transport_args (iso_g pdi) a) vt
+                  (transport_val_vars (iso_g pdi) vv)).
+    simpl.  unfold transport_preds. rewrite Hpreds.
+    assert (Hnoeps: noeps_fmla body) by (clear -p_in Hn ;apply noeps_context_pred_defined in p_in; auto).
+    rewrite (transport_formula_rep gamma_valid pdi pf) by assumption.
+    apply fmla_change_vv.
+    intros x Hinx.
+    rewrite transport_val_vars_with_args.
+    rewrite transport_args_inv2.
+    apply val_with_args_ext.
+    rewrite transport_val_vars_upd_vv_args_srts.
+    apply upd_vv_args_ext. intros y.
+    apply transport_val_vars_inv2.
+  - clear -Hind1 Hn. intros l l_in p fs p_in srts Hlen vt vv f f_in.
+    specialize (Hind1 l l_in p fs p_in srts Hlen vt (transport_val_vars (iso_g pdi) vv) f f_in).
+    unfold is_true in Hind1 |- *. rewrite <- Hind1.
+    symmetry. rewrite transport_formula_rep with (pdi:=pdi) by (eapply  noeps_context_indpred; eauto).
+    apply fmla_change_vv.
+    intros x Hinx. apply transport_val_vars_inv2.
+  - clear -Hind2 Hn. intros l l_in p p_in fs srts srts_len a vt vv Ps Hconstrs Hpreds.
+    specialize (Hind2 l l_in p p_in fs srts srts_len (transport_args (iso_g pdi) a) vt
+                  (transport_val_vars (iso_g pdi) vv) (transport_indpred_Ps (iso_f pdi) Ps)).
+    prove_hyp Hind2.
+    {
+      intros ts' Hform Hinfs'. specialize (Hconstrs ts' Hform Hinfs').
+      match goal with  H: context [ iter_and ?l ] |- iter_and ?l2 =>
+                         let H1 := fresh in assert (H1: l = l2); [| rewrite <- H1; auto] end.
+      f_equal.
+      apply dep_map_ext.
+      intros x y1 y2 Hinx.
+      rewrite transport_formula_rep with (pdi:=pdi).
+      2: {
+        (*Prove eps inline*)
+        clear -Hinfs' Hinx l_in Hn.
+        rewrite in_map_iff in Hinfs'.
+        destruct Hinfs' as [[x1 x2] [Heq Hin]]; subst. simpl in *.
+        eapply noeps_context_indpred; eauto.
+      }
+      rewrite fmla_rep_irrel with (Hval2:=y2).
+      rewrite fmla_change_vv with (v1:= (transport_val_vars (iso_f pdi) (transport_val_vars (iso_g pdi) vv)))
+                                  (v2:=vv).
+      2: { intros. apply transport_val_vars_inv2. }
+      apply fmla_change_pf.
+      + apply pf_same_constrs_refl; auto.
+      + intros p' srts' a' Hinp'.
+        simpl. unfold transport_preds. symmetry; apply transport_find_apply_pred.
+      + intros f' srts' a' Hinf'. reflexivity.
+    }
+    simpl in Hpreds.
+    unfold transport_preds in Hpreds.
+    specialize (Hind2 Hpreds).
+    rewrite  transport_get_hlist_elt in Hind2.
+    rewrite transport_args_inv2 in Hind2.
+    exact Hind2.
+Qed.
+ 
