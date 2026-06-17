@@ -17,16 +17,20 @@ Do in 2 pieces:
 Record iso_pd {gamma: context} (gamma_valid: valid_context gamma)
   (pd1 pd2: pi_dom) :=
   mk_pd_iso {
-      iso_f : forall {s}, dom_aux pd1 s -> dom_aux pd2 s;
-      iso_g : forall {s}, dom_aux pd2 s -> dom_aux pd1 s;
-      inv1: forall {s: sort} (x: dom_aux pd1 s), iso_g (iso_f x) = x;
-      inv2: forall {s: sort} (x: dom_aux pd2 s), iso_f (iso_g x) = x;
+      iso_f : forall {s}, domain (dom_aux pd1) s -> domain (dom_aux pd2) s;
+      iso_g : forall {s}, domain (dom_aux pd2) s -> domain (dom_aux pd1) s;
+      inv1: forall {s: sort} (x: domain (dom_aux pd1) s), iso_g (iso_f x) = x;
+      inv2: forall {s: sort} (x: domain (dom_aux pd2) s), iso_f (iso_g x) = x;
       pd_noadt: forall ts srts (Hts: find_ts_in_ctx gamma ts = None),
         dom_aux pd1 (s_cons ts srts) = dom_aux pd2 (s_cons ts srts);
       f_noadt: forall ts srts (Hts: find_ts_in_ctx gamma ts = None) x,
         @iso_f (s_cons ts srts) x = scast (pd_noadt ts srts Hts) x;
       g_noadt: forall ts srts (Hts: find_ts_in_ctx gamma ts = None) x,
         @iso_g (s_cons ts srts) x = scast (eq_sym (pd_noadt ts srts Hts)) x;
+      f_int: forall z, @iso_f s_int z = z;
+      g_int: forall z, @iso_g s_int z = z;
+      f_real: forall r, @iso_f s_real r = r;
+      g_real: forall r, @iso_g s_real r = r
     }.
 
 Arguments iso_f {_} {_} {_} {_}.
@@ -47,7 +51,7 @@ Defined.
 
 (*Lift to domain*)
 
-Definition transport_dom {pd1 pd2: pi_dom} (f: forall s, dom_aux pd1 s -> dom_aux pd2 s):
+(*Definition transport_dom {pd1 pd2: pi_dom} (f: forall s, dom_aux pd1 s -> dom_aux pd2 s):
   forall s, domain (dom_aux pd1) s -> domain (dom_aux pd2) s :=
   fun s =>
     match s return domain (dom_aux pd1) s -> domain (dom_aux pd2) s with
@@ -70,29 +74,54 @@ Lemma transport_dom_inv1 {gamma: context} (gamma_valid: valid_context gamma) {pd
 Proof.
   unfold transport_dom. destruct s; simpl; auto.
   apply inv1.
+Qed.*)
+
+Lemma iso_f_inj {gamma: context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
+  (pdi: iso_pd gamma_valid pd1 pd2) s x1 x2:
+  iso_f pdi s x1 = iso_f pdi s x2 -> x1 = x2.
+Proof.
+  intros Heq. apply (f_equal (fun x => iso_g pdi s x)) in Heq.
+  rewrite !inv1 in Heq. assumption.
 Qed.
 
-Lemma transport_dom_inj  {gamma: context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
+(*Lemma transport_dom_inj  {gamma: context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
   (pdi: iso_pd gamma_valid pd1 pd2) s x1 x2:
   transport_dom (iso_f pdi) s x1 = transport_dom (iso_f pdi) s x2 -> x1 = x2.
 Proof.
   intros Heq. apply (f_equal (fun x => transport_dom (iso_g pdi) s x)) in Heq.
   rewrite !transport_dom_inv1 in Heq. auto.
+Qed.*)
+
+Lemma iso_cast {pd1 pd2: pi_dom}
+  (f: forall s, domain (dom_aux pd1) s -> domain (dom_aux pd2) s)
+  s1 s2 (x: domain (dom_aux pd1) s1) (Heq: s1 = s2):
+  f s2 (dom_cast (dom_aux pd1) Heq x) =
+    dom_cast (dom_aux pd2) Heq (f s1 x).
+Proof.
+  subst. reflexivity.
 Qed.
 
-Lemma transport_dom_cast {pd1 pd2: pi_dom} (f: forall s, dom_aux pd1 s -> dom_aux pd2 s) s1 s2
+(*Lemma iso_g_cast  {gamma: context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
+  (pdi: iso_pd gamma_valid pd1 pd2) s1 s2 (x: domain (dom_aux pd2) s1) (Heq: s1 = s2):
+  iso_g pdi s2 (dom_cast (dom_aux pd2) Heq x) =
+    dom_cast (dom_aux pd1) Heq (iso_g pdi s1 x).
+Proof.
+  subst. reflexivity.
+Qed.*)
+
+(*Lemma transport_dom_cast {pd1 pd2: pi_dom} (f: forall s, dom_aux pd1 s -> dom_aux pd2 s) s1 s2
       (x: domain (dom_aux pd1) s1) (Heq: s1 = s2):
           transport_dom f s2 (dom_cast (dom_aux pd1) Heq x) =
             dom_cast (dom_aux pd2)  Heq (transport_dom f s1 x).
 Proof.
   subst. rewrite !dom_cast_refl. reflexivity.
-Qed.
+Qed.*)
   
 (*Lift to arg_list*)
-Definition transport_args {pd1 pd2: pi_dom} (f: forall s, dom_aux pd1 s -> dom_aux pd2 s) {srts}
+Definition transport_args {pd1 pd2: pi_dom} (f: forall s, domain (dom_aux pd1) s -> domain (dom_aux pd2) s) {srts}
   (a: arg_list (domain (dom_aux pd1)) srts):
   arg_list (domain (dom_aux pd2)) srts :=
-  hlist_map _ _ (transport_dom f)_ a.
+  hlist_map _ _ f _ a.
 
 Lemma transport_args_inv1 {gamma: context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
   (pdi: iso_pd gamma_valid pd1 pd2) {srts}
@@ -102,7 +131,7 @@ Proof.
   unfold transport_args.
   rewrite hlist_map_map.
   apply hlist_map_id.
-  intros x y. apply transport_dom_inv1.
+  intros x y. apply inv1.
 Qed.
 
 Lemma transport_args_inv2 {gamma: context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
@@ -113,7 +142,7 @@ Proof.
   unfold transport_args.
   rewrite hlist_map_map.
   apply hlist_map_id.
-  intros x y. apply transport_dom_inv2.
+  intros x y. apply inv2.
 Qed.
 
 Lemma transport_args_inj2 {gamma: context} (gamma_valid: valid_context gamma) {pd1 pd2: pi_dom}
@@ -127,23 +156,23 @@ Proof.
   auto.
 Qed.
 
-Lemma transport_args_cast {pd1 pd2: pi_dom} (f: forall s, dom_aux pd1 s -> dom_aux pd2 s) {srts1 srts2}
+Lemma transport_args_cast {pd1 pd2: pi_dom} (f: forall s, domain (dom_aux pd1) s -> domain (dom_aux pd2) s) {srts1 srts2}
   (a: arg_list (domain (dom_aux pd1)) srts1) (Heq: srts1 = srts2):
   transport_args f (cast_arg_list Heq a) = cast_arg_list Heq (transport_args f a).
 Proof.
   subst. reflexivity.
 Qed.
 
-Lemma transport_args_hd  {pd1 pd2: pi_dom} (f: forall s, dom_aux pd1 s -> dom_aux pd2 s) {s srts}
+Lemma transport_args_hd  {pd1 pd2: pi_dom} (f: forall s, domain (dom_aux pd1) s -> domain (dom_aux pd2) s) {s srts}
   (a: arg_list (domain (dom_aux pd1)) (s :: srts)):
-  hlist_hd (transport_args f a) = transport_dom f s (hlist_hd a).
+  hlist_hd (transport_args f a) = f s (hlist_hd a).
 Proof.
   unfold transport_args.
   pose proof (hlist_inv a) as Ha; rewrite Ha.
   rewrite hlist_map_equation_2. reflexivity.
 Qed.
 
-Lemma transport_args_tl {pd1 pd2: pi_dom} (f: forall s, dom_aux pd1 s -> dom_aux pd2 s) {s srts}
+Lemma transport_args_tl {pd1 pd2: pi_dom} (f: forall s, domain (dom_aux pd1) s -> domain (dom_aux pd2) s) {s srts}
   (a: arg_list (domain (dom_aux pd1)) (s :: srts)):
   hlist_tl (transport_args f a) = transport_args f (hlist_tl a).
 Proof.
@@ -154,17 +183,17 @@ Qed.
     
 
 (*Lift to funs*)
-Definition transport_funs {pd1 pd2: pi_dom} (f: forall s, dom_aux pd1 s -> dom_aux pd2 s)
-  (g: forall s, dom_aux pd2 s -> dom_aux pd1 s)
+Definition transport_funs {pd1 pd2: pi_dom} (f: forall s, domain (dom_aux pd1) s -> domain (dom_aux pd2) s)
+  (g: forall s, domain (dom_aux pd2) s -> domain (dom_aux pd1) s)
   (funs: forall (f: funsym) srts, arg_list (domain (dom_aux pd1)) (sym_sigma_args f srts) ->
                    domain (dom_aux pd1) (funsym_sigma_ret f srts)) :
   forall (f: funsym) srts, arg_list (domain (dom_aux pd2)) (sym_sigma_args f srts) ->
             domain (dom_aux pd2) (funsym_sigma_ret f srts) :=
-  fun (fs: funsym) srts a => transport_dom f _ (funs fs srts (transport_args g a)).
+  fun (fs: funsym) srts a => f _ (funs fs srts (transport_args g a)).
 
 (*And preds*)
 Definition transport_preds {pd1 pd2: pi_dom} 
-  (g: forall s, dom_aux pd2 s -> dom_aux pd1 s)
+  (g: forall s, domain (dom_aux pd2) s -> domain (dom_aux pd1) s)
   (preds: forall (p: predsym) srts, arg_list (domain (dom_aux pd1)) (sym_sigma_args p srts) -> bool) :
   forall (p: predsym) srts, arg_list (domain (dom_aux pd2)) (sym_sigma_args p srts) -> bool :=
   fun (ps: predsym) srts a => preds ps srts (transport_args g a).
@@ -184,7 +213,7 @@ Proof.
     unfold ADTSpec.constr_rep in Heq, constrs_inj.
     apply dom_cast_inj in Heq.
     unfold transport_funs in Heq.
-    apply transport_dom_inj in Heq.
+    apply iso_f_inj in Heq.
     specialize (constrs_inj m a c m_in a_in c_in srts srts_len
                   (transport_args (iso_g pdi) a1) (transport_args (iso_g pdi) a2)).
     assert (Htrans: transport_args (iso_g pdi) a1 = transport_args (iso_g pdi) a2).
@@ -197,8 +226,8 @@ Proof.
     specialize (constrs_disj m a c1 c2 m_in a_in c1_in c2_in srts srts_len
                   (transport_args (iso_g pdi) a1) (transport_args (iso_g pdi) a2) Hneq).
     apply constrs_disj.
-    apply (f_equal (transport_dom (iso_g pdi) (funsym_sigma_ret c2 srts))) in Heq.
-    rewrite transport_dom_inv1 in Heq.
+    apply (f_equal (iso_g pdi (funsym_sigma_ret c2 srts))) in Heq.
+    rewrite inv1 in Heq.
     rewrite Heq. clear Heq constrs_disj.
     gen_dom_cast. intros Heq1. symmetry.  gen_dom_cast. intros Heq1 Heq2.
     generalize dependent  (eq_trans Heq1 (eq_sym Heq2)).
@@ -210,7 +239,7 @@ Proof.
   - clear constrs_inj constrs_disj adt_ind.
     intros m a m_in a_in srts srts_len x.
     unfold ADTSpec.adt_rep in *.
-    specialize (find_constr_rep m a m_in a_in srts srts_len (transport_dom (iso_g pdi) _ x)).
+    specialize (find_constr_rep m a m_in a_in srts srts_len (iso_g pdi _ x)).
     destruct find_constr_rep as [c [[c_in a1] Ha1]].
     apply (existT c).
     apply (exist _ (c_in, transport_args (iso_f pdi) a1)).
@@ -227,12 +256,12 @@ Proof.
     intros m m_in srts srts_len P IH a a_in x.
     specialize (adt_ind m m_in srts srts_len).
     set (P':=fun (a: alg_datatype) (a_in: adt_in_mut a m) (x: ADTSpec.adt_rep (dom_aux pd1) a srts) =>
-               P a a_in (transport_dom (iso_f pdi) _ x)).
+               P a a_in (iso_f pdi _ x)).
     specialize (adt_ind P').
     prove_hyp adt_ind.
     {
       intros t t_in x1 c c_in a1 Hx1 Hconstrs. unfold P'.
-      specialize (IH t t_in (transport_dom (iso_f pdi) _ x1) c c_in (transport_args (iso_f pdi) a1)).
+      specialize (IH t t_in (iso_f pdi _ x1) c c_in (transport_args (iso_f pdi) a1)).
       apply IH.
       - rewrite Hx1. unfold ADTSpec.constr_rep, transport_funs. rewrite transport_args_inv1.
         gen_dom_cast.
@@ -248,8 +277,8 @@ Proof.
         generalize dependent (nth i (sym_sigma_args c srts) s_int).
         intros; subst. auto.
     }
-    specialize (adt_ind a a_in (transport_dom (iso_g pdi) _ x)). unfold P' in adt_ind.
-    rewrite transport_dom_inv2 in adt_ind. exact adt_ind.
+    specialize (adt_ind a a_in (iso_g pdi _ x)). unfold P' in adt_ind.
+    rewrite inv2 in adt_ind. exact adt_ind.
 Qed.
 
 (*Lift to [pi_funpred]*)
@@ -267,16 +296,16 @@ Definition transport_pf {gamma: context} (gamma_valid: valid_context gamma) {pd1
 
 (*Lift to [val_vars]*)
 Definition transport_val_vars {pd1 pd2: pi_dom}
-  (f: forall s, dom_aux pd1 s -> dom_aux pd2 s)
+  (f: forall s, domain (dom_aux pd1) s -> domain (dom_aux pd2) s)
   {vt: val_typevar} (vv: val_vars pd1 vt) : val_vars pd2 vt :=
-  fun x => transport_dom f _ (vv x).
+  fun x => f _ (vv x).
 
 
 Lemma transport_val_vars_substi {pd1 pd2: pi_dom}
-  (f: forall s, dom_aux pd1 s -> dom_aux pd2 s)
+  (f: forall s, domain (dom_aux pd1) s -> domain (dom_aux pd2) s)
   {vt: val_typevar} (vv: val_vars pd1 vt) v x y:
   transport_val_vars f (substi pd1 vt vv v x) y =
-    substi pd2 vt (transport_val_vars f vv) v (transport_dom f _ x) y.
+    substi pd2 vt (transport_val_vars f vv) v (f _ x) y.
 Proof.
   unfold transport_val_vars; simpl.
   unfold substi.  destruct (vsymbol_eq_dec y v); subst; reflexivity.
@@ -310,10 +339,10 @@ Lemma transport_match_val_single {gamma} (gamma_valid: valid_context gamma) {pd1
                    (m2: amap vsymbol {s: sort & domain (dom_aux pd2) s})  =>
                  forall v x1 x2, amap_lookup m1 v = Some x1 -> amap_lookup m2 v = Some x2 ->
                                  exists (Heq: projT1 x2 = projT1 x1),
-                                   projT2 x1 = dom_cast _ Heq (transport_dom (iso_g pdi) _ (projT2 x2)))
+                                   projT2 x1 = dom_cast _ Heq (iso_g pdi _ (projT2 x2)))
     (match_val_single gamma_valid pd1 pf vt ty p Hp d)
     (match_val_single gamma_valid pd2 (transport_pf gamma_valid pdi pf)
-       vt ty p Hp (transport_dom (iso_f pdi) _ d)).
+       vt ty p Hp (iso_f pdi _ d)).
 Proof.
   revert ty Hp d.
   induction p as [v | c tys ps IHps | | p1 p2 IH1 IH2 | p x IH]; intros ty Hp d.
@@ -321,7 +350,7 @@ Proof.
     simpl. intros y x1 x2 Hlook1 Hlook2.
     apply lookup_singleton_impl in Hlook1, Hlook2.
     destruct Hlook1 as [Heq Hx1]; destruct Hlook2 as [_ Hx2]; subst.
-    simpl. exists eq_refl. rewrite transport_dom_inv1. reflexivity.
+    simpl. exists eq_refl. rewrite inv1. reflexivity.
   - (*Pconstr*)
     rewrite !match_val_single_rewrite. cbn.
     generalize dependent (@is_vty_adt_some gamma ty).
@@ -345,7 +374,7 @@ Proof.
        (transport_args (iso_f pdi) a2)).
     {
       unfold ADTSpec.constr_rep in Ha2, Ha1. unfold transport_funs in Ha1.
-      rewrite Ha2 in Ha1. clear Ha2. rewrite <- transport_dom_cast in Ha1.
+      rewrite Ha2 in Ha1. clear Ha2. rewrite <- iso_cast in Ha1.
       simpl in Ha1.
       apply (f_equal (iso_g pdi (s_cons (adt_name adt) (map (v_subst vt) vs2)))) in Ha1.
       rewrite !inv1 in Ha1.
@@ -417,7 +446,7 @@ Proof.
     simpl in IH |- *.
     intros v x1 x2. rewrite !amap_set_lookup_iff.
     intros [[Hxv Hx1] | [Hxv Hx1]] [[Hxv' Hx2] | [Hxv' Hx2]]; subst; try contradiction; auto.
-    + simpl. exists eq_refl. rewrite transport_dom_inv1. reflexivity.
+    + simpl. exists eq_refl. rewrite inv1. reflexivity.
     + eauto.
 Qed.
 
@@ -461,7 +490,7 @@ Lemma transport_get_arg_list {gamma} (gamma_valid: valid_context gamma) {pd1 pd2
   (Htys: Forall (fun x => term_has_type gamma (fst x) (snd x)) (combine ts (map (ty_subst params vs) args)))
   (IH: Forall (fun tm => forall (vv: val_vars pd1 vt) (ty: vty) (Hty: term_has_type gamma tm ty),
                    term_rep gamma_valid pd1 pf vt vv tm ty Hty =
-                     transport_dom (iso_g pdi) (v_subst vt ty)
+                     iso_g pdi (v_subst vt ty)
                        (term_rep gamma_valid pd2 (transport_pf gamma_valid pdi pf) vt
                           (transport_val_vars (iso_f pdi) vv) tm ty Hty)) ts):
   get_arg_list pd1 vt vs ts (term_rep gamma_valid pd1 pf vt vv) Hn ts_len vs_len Htys =
@@ -497,7 +526,7 @@ Proof.
   2: intros; apply term_rep_irrel.
   2: exact Heq. 
   2: exact Htyi.
-  rewrite transport_dom_cast. f_equal.
+  rewrite iso_cast. f_equal.
   rewrite Forall_forall in IH.
   assert (Hn': In (nth i ts tm_d) ts) by (apply nth_In; lia).
   apply IH; auto.
@@ -510,7 +539,7 @@ Lemma iso_denote_aux {gamma : context} (gamma_valid: valid_context gamma) {pd1 p
   (vt: val_typevar) t f:
   (forall (Heps: noeps_tm t) (vv: val_vars pd1 vt) (ty : vty) (Hty: term_has_type gamma t ty),
       term_rep gamma_valid pd1 pf vt vv t ty Hty =
-        transport_dom (iso_g pdi) _
+        iso_g pdi _
           (term_rep gamma_valid pd2 (transport_pf gamma_valid pdi pf) vt
              (transport_val_vars (iso_f pdi) vv) t ty Hty)) /\
     (forall (Heps: noeps_fmla f) (vv: val_vars pd1 vt) (Hty: formula_typed gamma f),
@@ -521,17 +550,19 @@ Proof.
   revert t f; apply term_formula_ind.
   - (*Tconst*)
     intros c Heps vv ty Hty. destruct c; simpl_rep_full; unfold cast_dom_vty;
-    rewrite transport_dom_cast; reflexivity.
+      rewrite iso_cast.
+    + simpl. rewrite (g_int _ _ _ pdi). reflexivity.
+    + simpl. rewrite (g_real _ _ _ pdi). reflexivity.
   - (*Tvar*)
     intros v Heps vv ty Hty. simpl_rep_full. unfold var_to_dom, transport_val_vars.
-    rewrite transport_dom_cast, transport_dom_inv1. reflexivity.
+    rewrite iso_cast, inv1. reflexivity.
   - (*Tfun*)
     intros f1 tys tms IH Heps vv ty Hty.
     simpl_rep_full. unfold cast_dom_vty.
-    rewrite transport_dom_cast. f_equal.
-    rewrite transport_dom_cast.
+    rewrite iso_cast. f_equal.
+    rewrite iso_cast.
     f_equal. unfold transport_funs.
-    rewrite transport_dom_inv1. f_equal.
+    rewrite inv1. f_equal.
     apply  transport_get_arg_list.
     simpl in Heps. unfold is_true in Heps. rewrite forallb_map, forallb_forall in Heps.
     revert IH. apply Forall_impl_strong. auto.
@@ -542,7 +573,7 @@ Proof.
     f_equal.
     apply tm_change_vv.
     intros x Hinx.
-    rewrite transport_val_vars_substi, transport_dom_inv2. reflexivity.
+    rewrite transport_val_vars_substi, inv2. reflexivity.
   - (*Tif*)
     intros f t1 t2 IH1 IH2 IH3 Heps vv ty Hty. simpl in Heps. rewrite !andb_true in Heps; destruct_all. 
     simpl_rep_full. rewrite IH1, IH2, IH3 by auto.
@@ -567,8 +598,8 @@ Proof.
     + intros vv Htm Hpat Hty1 d Hexhaust.
       (*use lemma about [match_val_single]*)
       pose proof (transport_match_val_single gamma_valid pdi pf vt _ _
-                    (Forall_inv Hpat) (transport_dom (iso_g pdi) _ d)) as Hmatch.
-      rewrite transport_dom_inv2 in Hmatch.
+                    (Forall_inv Hpat) (iso_g pdi _ d)) as Hmatch.
+      rewrite inv2 in Hmatch.
       simpl in Hepsp. rewrite andb_true in Hepsp; destruct Hepsp.
       destruct (match_val_single _ pd1 _ _ _ _ _ _) as [m1|] eqn : Hmatch1;
         destruct (match_val_single _ pd2 _ _ _ _ _ _) as [m2|] eqn : Hmatch2; try solve[contradiction].
@@ -582,7 +613,7 @@ Proof.
         -- specialize (Hmatch _ _ _ Hlook1 Hlook2). destruct Hmatch as [Heq1 Heq2].
            destruct y1; simpl in *. subst.
            destruct (sort_eq_dec _ _); auto.
-           rewrite !transport_dom_cast, transport_dom_inv2, !dom_cast_compose.
+           rewrite !iso_cast, inv2, !dom_cast_compose.
            apply dom_cast_eq.
         -- apply match_val_single_fv in Hmatch1, Hmatch2.
            apply amap_lookup_some_impl in Hlook1.
@@ -615,7 +646,7 @@ Proof.
     assert (Heq: forall d, formula_rep gamma_valid pd1 pf vt (substi pd1 vt vv v d) f (typed_quant_inv Hty) =
         formula_rep gamma_valid pd2 (transport_pf gamma_valid pdi pf) vt
           (substi pd2 vt (transport_val_vars (iso_f pdi) vv) v
-             (transport_dom (iso_f pdi) _ d)) f (typed_quant_inv Hty)).
+             (iso_f pdi _ d)) f (typed_quant_inv Hty)).
     {
       simpl in Heps.
       intros d. rewrite IH by auto. apply fmla_change_vv. intros x Hx.
@@ -623,17 +654,17 @@ Proof.
     }
     destruct q; apply all_dec_eq.
     + setoid_rewrite Heq. split.
-      * intros Hall d. specialize (Hall (transport_dom (iso_g pdi) _ d)).
-        rewrite transport_dom_inv2 in Hall. auto.
+      * intros Hall d. specialize (Hall (iso_g pdi _ d)).
+        rewrite inv2 in Hall. auto.
       * intros Hall d. apply Hall.
     + setoid_rewrite Heq. split; intros [d Hrep].
       * eauto.
-      * exists (transport_dom (iso_g pdi) _ d). rewrite transport_dom_inv2. auto.
+      * exists (iso_g pdi _ d). rewrite inv2. auto.
   - (*Feq*)
     intros ty t1 t2 IH1 IH2 Heps vv Hty. simpl in Heps. rewrite andb_true in Heps.
     destruct Heps. simpl_rep_full. rewrite IH1, IH2; auto.
     apply all_dec_eq. split; intros Hrep.
-    + apply (f_equal (transport_dom (iso_f pdi) _)) in Hrep. rewrite !transport_dom_inv2 in Hrep. auto.
+    + apply (f_equal (iso_f pdi _)) in Hrep. rewrite !inv2 in Hrep. auto.
     + f_equal; auto.
   - (*Fbinop*)
     intros b f1 f2 IH1 IH2 Heps vv Hty.  simpl in Heps. rewrite andb_true in Heps.
@@ -649,7 +680,7 @@ Proof.
     rewrite IH2, IH1; auto.
     apply fmla_change_vv.
     intros x Hinx.
-    rewrite transport_val_vars_substi, transport_dom_inv2. reflexivity.
+    rewrite transport_val_vars_substi, inv2. reflexivity.
   - (*Fif*)
     intros f1 f2 f3 IH1 IH2 IH3 Heps vv Hty. simpl in Heps. rewrite !andb_true in Heps; destruct_all. 
     simpl_rep_full. rewrite IH1, IH2, IH3 by auto.
@@ -674,8 +705,8 @@ Proof.
     + intros vv Htm Hpat Hty1 d Hexhaust.
       (*use lemma about [match_val_single]*)
       pose proof (transport_match_val_single gamma_valid pdi pf vt _ _
-                    (Forall_inv Hpat) (transport_dom (iso_g pdi) _ d)) as Hmatch.
-      rewrite transport_dom_inv2 in Hmatch.
+                    (Forall_inv Hpat) (iso_g pdi _ d)) as Hmatch.
+      rewrite inv2 in Hmatch.
       simpl in Hepsp. rewrite andb_true in Hepsp; destruct Hepsp.
       destruct (match_val_single _ pd1 _ _ _ _ _ _) as [m1|] eqn : Hmatch1;
         destruct (match_val_single _ pd2 _ _ _ _ _ _) as [m2|] eqn : Hmatch2; try solve[contradiction].
@@ -689,7 +720,7 @@ Proof.
         -- specialize (Hmatch _ _ _ Hlook1 Hlook2). destruct Hmatch as [Heq1 Heq2].
            destruct y1; simpl in *. subst.
            destruct (sort_eq_dec _ _); auto.
-           rewrite !transport_dom_cast, transport_dom_inv2, !dom_cast_compose.
+           rewrite !iso_cast, inv2, !dom_cast_compose.
            apply dom_cast_eq.
         -- apply match_val_single_fv in Hmatch1, Hmatch2.
            apply amap_lookup_some_impl in Hlook1.
@@ -805,7 +836,7 @@ Proof.
   apply Hini in f_in; auto.
 Qed.
  
-Lemma transport_val_vars_with_args {pd1 pd2} (f: forall s, dom_aux pd1 s -> dom_aux pd2 s)
+Lemma transport_val_vars_with_args {pd1 pd2} (f: forall s, domain (dom_aux pd1) s -> domain (dom_aux pd2) s)
   (vt: val_typevar) (vv: val_vars pd1 vt) vs srts (al: arg_list (domain (dom_aux pd1)) srts) (x: vsymbol):
       transport_val_vars f (val_with_args pd1 vt vv vs al)  x =
         val_with_args pd2 vt (transport_val_vars f vv) vs (transport_args f al) x.
@@ -817,8 +848,7 @@ Proof.
     rewrite hlist_map_equation_1. reflexivity.
   - pose proof (hlist_inv al) as Hal. rewrite Hal. unfold transport_args.
     rewrite hlist_map_equation_2. destruct (vty_eq_dec _ _); auto.
-    destruct (vsymbol_eq_dec _ _); auto.
-    rewrite transport_dom_cast. reflexivity.
+    destruct (vsymbol_eq_dec _ _); auto. rewrite iso_cast. reflexivity.
 Qed.
 
 Lemma val_with_args_ext {pd} vt (vv1 vv2: val_vars pd vt) vs srts (al: arg_list (domain (dom_aux pd)) srts) x:
@@ -834,15 +864,15 @@ Proof.
     destruct (vsymbol_eq_dec _ _); auto.
 Qed.
 
-Lemma transport_val_vars_upd_vv_args_srts {pd1 pd2}(f: forall s, dom_aux pd1 s -> dom_aux pd2 s)
+Lemma transport_val_vars_upd_vv_args_srts {pd1 pd2}(f: forall s, domain (dom_aux pd1) s -> domain (dom_aux pd2) s)
   params srts Hlen Hn vt vv x :
   transport_val_vars f (upd_vv_args_srts params srts Hlen Hn pd1 vt vv) x =
     upd_vv_args_srts params srts Hlen Hn pd2 vt (transport_val_vars f vv) x.
 Proof.
   unfold transport_val_vars.
   unfold upd_vv_args_srts.
-  rewrite !transport_dom_cast. f_equal.
-  unfold upd_vv_args. rewrite !transport_dom_cast. reflexivity.
+  rewrite !iso_cast. f_equal.
+  unfold upd_vv_args. rewrite !iso_cast. reflexivity.
 Qed.
 
 Lemma upd_vv_args_ext params srts Hlen Hn pd vt (vv1 vv2: val_vars pd vt) x:
@@ -858,16 +888,16 @@ Lemma transport_val_vars_inv2 {gamma: context} (gamma_valid: valid_context gamma
   (pdi: iso_pd gamma_valid pd1 pd2) {vt} (vv: val_vars pd2 vt) x:
   transport_val_vars (iso_f pdi) (transport_val_vars (iso_g pdi) vv) x = vv x.
 Proof.
-  unfold transport_val_vars. apply transport_dom_inv2.
+  unfold transport_val_vars. apply inv2.
 Qed.
 
-Definition transport_indpred_Ps {pd1 pd2} (f: forall s, dom_aux pd2 s -> dom_aux pd1 s)
+Definition transport_indpred_Ps {pd1 pd2} (f: forall s, domain (dom_aux pd2) s -> domain (dom_aux pd1) s)
   {l} (Ps: hlist (fun (p': predsym) =>
                     forall srts, arg_list (domain (dom_aux pd1)) (sym_sigma_args p' srts) -> bool) l):
   hlist (fun (p': predsym) => forall srts, arg_list (domain (dom_aux pd2)) (sym_sigma_args p' srts) -> bool) l :=
   hlist_map _ _ (fun p' g srts a => (g srts (transport_args f a))) _ Ps.
 
-Lemma hlist_hd_transport_indpred_Ps  {pd1 pd2} (f: forall s, dom_aux pd2 s -> dom_aux pd1 s)
+Lemma hlist_hd_transport_indpred_Ps  {pd1 pd2} (f: forall s, domain (dom_aux pd2) s -> domain (dom_aux pd1) s)
   {x l} (Ps: hlist (fun (p': predsym) =>
                       forall srts, arg_list (domain (dom_aux pd1)) (sym_sigma_args p' srts) -> bool) (x :: l)) srts a:
   hlist_hd (transport_indpred_Ps f Ps) srts a = hlist_hd Ps srts (transport_args f a).
@@ -876,7 +906,7 @@ Proof.
   pose proof (hlist_inv Ps) as Hps; rewrite Hps, hlist_map_equation_2; reflexivity.
 Qed.
 
-Lemma hlist_tl_transport_indpred_Ps  {pd1 pd2} (f: forall s, dom_aux pd2 s -> dom_aux pd1 s)
+Lemma hlist_tl_transport_indpred_Ps  {pd1 pd2} (f: forall s, domain (dom_aux pd2) s -> domain (dom_aux pd1) s)
   {x l} (Ps: hlist (fun (p': predsym) =>
                       forall srts, arg_list (domain (dom_aux pd1)) (sym_sigma_args p' srts) -> bool) (x :: l)):
   hlist_tl (transport_indpred_Ps f Ps) = transport_indpred_Ps f (hlist_tl Ps).
@@ -885,7 +915,7 @@ Proof.
   pose proof (hlist_inv Ps) as Hps; rewrite Hps, hlist_map_equation_2; reflexivity.
 Qed.
 
-Lemma transport_get_hlist_elt {pd1 pd2} (f: forall s, dom_aux pd2 s -> dom_aux pd1 s) {l}
+Lemma transport_get_hlist_elt {pd1 pd2} (f: forall s, domain (dom_aux pd2) s -> domain (dom_aux pd1) s) {l}
   (Ps: hlist (fun (p' : predsym) => forall srts,
                   arg_list (domain (dom_aux pd1)) (sym_sigma_args p' srts) -> bool) l)
   p Hin srts a:
@@ -929,10 +959,10 @@ Proof.
                   (transport_val_vars (iso_g pdi) vv)).
     simpl in Hfuns |- *.
     unfold transport_funs. rewrite Hfuns.
-    rewrite !transport_dom_cast. f_equal.
+    rewrite !iso_cast. f_equal.
     assert (Hnoeps: noeps_tm body) by (clear -f_in Hn ;apply noeps_context_fun_defined in f_in; auto).
     rewrite (transport_term_rep gamma_valid pdi pf) by assumption.
-    rewrite transport_dom_inv2.
+    rewrite inv2.
     apply tm_change_vv.
     intros x Hinx.
     rewrite transport_val_vars_with_args.
@@ -997,4 +1027,295 @@ Proof.
     rewrite transport_args_inv2 in Hind2.
     exact Hind2.
 Qed.
- 
+
+(*Part 3: Constructing the isomorphism*)
+
+(*TODO: move*)
+Lemma constr_args_unif {gamma} (gamma_valid: valid_context gamma) {m a1 a2 c tys}
+      (m_in: mut_in_ctx m gamma) (a1_in: adt_in_mut a1 m) (a2_in: adt_in_mut a2 m) 
+      (c_in: constr_in_adt c a1)
+      (Hin: In (vty_cons (adt_name a2) tys) (s_args c)):
+      tys = map vty_var (m_params m).
+Proof.
+   pose proof (gamma_all_unif gamma_valid m m_in) as Hunif.
+   unfold uniform, is_true in Hunif.
+   rewrite forallb_forall in Hunif. specialize (Hunif a1 (in_bool_In _ _ _ a1_in)).
+   rewrite forallb_forall in Hunif. specialize (Hunif c). prove_hyp Hunif.
+   { apply constr_in_adt_eq. auto. }
+   unfold uniform_list in Hunif. rewrite forallb_forall in Hunif.
+   specialize (Hunif _ Hin). simpl in Hunif. 
+   rewrite implb_true_iff in Hunif. 
+   prove_hyp Hunif.
+   {
+     unfold ts_in_mut_list. apply In_in_bool. apply in_map.
+     apply in_bool_In in a2_in; auto.
+   }
+   destruct (list_eq_dec _ _ _); auto. discriminate.
+Qed.
+
+
+(*Termination metric: lexicographic pair of [size_sort] and [adt_smaller]*)
+Require Import ADTInterp.
+Require Import RecFun.
+(*TODO: move metrics out of both*)
+From Equations Require Import Equations.
+
+(*TODO: move?*)
+Lemma size_ts_same_mut {gamma} (gamma_valid: valid_context gamma) {m a1 a2}
+  (m_in: mut_in_ctx m gamma) (a1_in: adt_in_mut a1 m) (a2_in: adt_in_mut a2 m):
+  size_ts gamma (adt_name a1) = size_ts gamma (adt_name a2).
+Proof.
+  rewrite !size_ts_eq by auto.
+  assert (Hfind1: find_ts_in_ctx gamma (adt_name a1) = Some (m, a1)). {
+    apply find_ts_in_ctx_iff; auto. }
+  assert (Hfind2: find_ts_in_ctx gamma (adt_name a2) = Some (m, a2)). {
+    apply find_ts_in_ctx_iff; auto. }
+  rewrite Hfind1, Hfind2. reflexivity.
+Qed.
+
+
+(*TODO: move*)
+
+Lemma prove_in_mut_ts_pairs {m a c ts tys}
+  (a_in: adt_in_mut a m) (c_in: constr_in_adt c a) (Hin: In (vty_cons ts tys) (s_args c))
+  (Hnotm: ts_in_mut_list ts (IndTypes.adts m) = false):
+  In (ts, tys) (IndTypes.mut_ts_pairs (IndTypes.adts m)).
+Proof.
+  unfold IndTypes.mut_ts_pairs. rewrite in_concat.
+  exists (IndTypes.adt_ts_pairs (IndTypes.adts m) a). split.
+  1 : { apply in_map. apply in_bool_In in a_in; auto. }
+  unfold IndTypes.adt_ts_pairs. rewrite in_concat.
+  exists (IndTypes.funsym_ts_pairs (IndTypes.adts m) c). split.
+  1: { apply in_map. apply constr_in_adt_eq; auto. }
+  unfold IndTypes.funsym_ts_pairs. rewrite in_omap_iff. exists (vty_cons ts tys).
+  simpl. split; auto. unfold IndTypes.get_nonind_vtys. rewrite in_filter.
+  rewrite Hnotm. auto.
+Qed.
+
+Definition inspect {A} (a : A) : {b | a = b} := exist _ a eq_refl.
+Notation "x 'eqn' ':' p" := (exist _ x p) (only parsing, at level 20).
+
+Inductive hlist_forall {A: Type} {f: A -> Type} (P: {x: A & f x} -> Prop) : 
+forall (l: list A), hlist f l  -> Prop :=
+  | HL_Nil : hlist_forall P [] (HL_nil _)
+  | HL_Cons: forall x t d h, P (existT x d) -> hlist_forall P t h -> hlist_forall P (x :: t) (HL_cons _ _ _ d h).
+
+Lemma hlist_forall_inv_hd {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) 
+{f: A -> Type} {P: {x: A & f x} -> Prop} {x t h}
+(Hall: hlist_forall P (x :: t) h):
+P (existT x (hlist_hd h)).
+Proof.
+  pose proof (hlist_inv h) as Hh. 
+  inversion Hall; subst.
+  rewrite Hh in H1. inversion H1; subst.
+  apply inj_pair2_eq_dec in H0; subst; auto.
+Qed.
+
+Lemma hlist_forall_inv_tl {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) 
+{f: A -> Type} {P: {x: A & f x} -> Prop} {x t h}
+(Hall: hlist_forall P (x :: t) h):
+hlist_forall P t (hlist_tl h).
+Proof.
+  pose proof (hlist_inv h) as Hh. 
+  inversion Hall; subst.
+  rewrite Hh in H1. inversion H1; subst.
+  apply inj_pair2_eq_dec in H4; subst; auto.
+  apply list_eq_dec. auto.
+Qed.
+
+Lemma prove_hlist_forall {A: Type} {f: A -> Type} (P: {x: A & f x} -> Prop) (l: list A) (h: hlist f l)
+  (d1: A) (d2: f d1):
+  (forall i (Hi: i < length l),
+      P (existT (nth i l d1) (hnth i h d1 d2))) ->
+  hlist_forall P l h.
+Proof.
+  induction l as [| x t IH].
+  - intros _. pose proof (hlist_nil h) as Hh. subst. constructor.
+  - simpl. intros Hall. pose proof (hlist_inv h) as Hh. rewrite Hh.
+    constructor.
+    + specialize (Hall 0 ltac:(lia)). simpl in Hall. apply Hall.
+    + apply IH. intros i Hi. specialize (Hall (S i) ltac:(lia)). auto.
+Qed.
+
+  Definition pack_sort_dom {pd: pi_dom} (s: sort) (d: domain (dom_aux pd) s) : {s : sort & domain (dom_aux pd) s} :=
+    existT s d.
+
+Lemma constr_rep_lexprod {gamma: context} (gamma_valid: valid_context gamma)
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+{m a} {c: funsym} {srts ts al d}
+(*{y: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)} *)
+(m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+(srts_len: length srts = length (m_params m)) (Hts: ts = adt_name a)
+(Hd: dom_cast (dom_aux pd) (f_equal (fun ts => s_cons ts srts) Hts) d = constr_rep gamma_valid pd pf m_in a_in c_in srts_len al):
+hlist_forall
+   (fun x : {x : sort & domain (dom_aux pd) x} =>
+    lexprod nat {s : sort & domain (dom_aux pd) s} lt (adt_smaller gamma_valid pf)
+      (size_sort gamma (projT1 x), x) (size_sort gamma (s_cons ts srts), pack_sort_dom (s_cons ts srts) d))
+   (sym_sigma_args c srts) al.
+Proof.
+  apply prove_hlist_forall with (d1:=s_int)(d2:=dom_int _).
+  unfold sym_sigma_args at 1. unfold ty_subst_list_s. simpl_len. intros i Hi.
+  (*Case on [nth i (sym_sigma_args c srts) d1]*)
+  set (x := nth i (sym_sigma_args c srts) s_int) in *.
+  simpl projT1.
+  assert (Hx: x = s_int \/ x = s_real \/
+                exists ts1 srts1, x = s_cons ts1 srts1).
+  { destruct x; eauto. }
+  destruct Hx as [Hx | [Hx | [ts1 [srts1 Hx]]]].
+  - apply left_lex. rewrite Hx. simpl. lia.
+  - apply left_lex. rewrite Hx. simpl. lia.
+  - (*Also need to destruct nth (s_args c)*)
+    assert (Hx': x = ty_subst_s (s_params c) srts (nth i (s_args c) vty_int)). {
+      unfold x. unfold sym_sigma_args, ty_subst_list_s.
+      rewrite map_nth_inbound with (d2:=vty_int) by auto.
+      reflexivity.
+    }
+    destruct (nth i (s_args c) vty_int) as [| | | ts' tys']  eqn : Hith; 
+      simpl in Hx'; try solve[rewrite Hx' in Hx; inversion Hx].
+    + (*var case - smaller*)
+      unfold ty_subst_s in Hx'. simpl in Hx'.
+      apply left_lex.
+      destruct (ty_subst_fun_cases (s_params c) srts s_int t) as [Hin | Hnotin].
+      * rewrite <- Hx' in Hin.
+        pose proof (size_sorts_cons_bound gamma ts srts).
+        pose proof (sort_size_in gamma Hin).
+        lia.
+      * rewrite Hnotin in Hx'. rewrite Hx'. simpl. lia.
+    + (*cons case*)
+      rewrite ty_subst_s_cons in Hx'.
+      rewrite Hx' in Hx; injection Hx. intros Hsrts1 Ht; subst. clear Hx.
+      destruct (ts_in_mut_list ts1 (IndTypes.adts m)) eqn : Hinm.
+      * assert (Hmutlist:=Hinm). 
+        apply ts_in_mut_list_spec in Hinm. destruct Hinm as [a1 [Hts1 a1_in]]. subst ts1.
+         (*By uniformity, x = s_cons ts1 srts*)
+        assert (Hx'': x = s_cons (adt_name a1) srts). {
+          assert (Htys: tys' = map vty_var (m_params m)). {
+            apply (constr_args_unif gamma_valid m_in a_in a1_in c_in).
+            rewrite <- Hith. apply nth_In; auto.
+          }
+          rewrite Htys in Hx'.
+          rewrite (adt_constr_params gamma_valid m_in a_in c_in) in Hx'.
+          unfold ty_subst_list_s in Hx'.
+          rewrite map_map in Hx'.
+          rewrite map_ty_subst_var_sort in Hx'; auto.
+          apply m_params_Nodup.
+        }
+        (*Therefore, size is equal*)
+        assert (Hsz: size_sort gamma (s_cons (adt_name a) srts) = size_sort gamma x). {
+          rewrite Hx''. simpl. f_equal. f_equal.
+          eapply size_ts_same_mut; eauto.
+        }
+        rewrite Hsz. apply right_lex.
+        unfold pack_sort_dom.
+        apply (ADT_small gamma_valid pf (existT x (hnth i al s_int (dom_int _))) (existT (s_cons (adt_name a) srts) d)  
+                 x (s_cons (adt_name a) srts)
+              (hnth i al s_int (dom_int _)) d m a1 a srts c al eq_refl eq_refl eq_refl eq_refl Hx'' 
+              eq_refl a1_in a_in m_in c_in srts_len); auto.
+        exists i. exists Hx''. split; auto.
+    * (*In this case, use definition of size to show smaller (in mut_pairs)*)
+      apply left_lex.
+      assert (Hpairs: In (ts1, tys') (IndTypes.mut_ts_pairs (IndTypes.adts m))).
+      {
+        apply (prove_in_mut_ts_pairs a_in c_in); auto.
+        rewrite <- Hith; apply nth_In; auto.
+      }
+      rewrite Hx'. unfold ty_subst_list_s.
+      rewrite (adt_constr_params gamma_valid m_in a_in c_in).
+      apply (mut_ts_pairs_subst_smaller gamma_valid m_in a_in); assumption.
+Qed.
+
+
+Section BuildPd.
+
+  Context {gamma: context} (gamma_valid: valid_context gamma) (pd1 pd2: pi_dom) (pf: pi_funpred gamma_valid pd1)
+                            (pf2: pi_funpred gamma_valid pd2) (*TODO: is this a problem?*)
+     (pd_eq: forall ts srts (Hts: find_ts_in_ctx gamma ts = None),
+                   dom_aux pd1 (s_cons ts srts) = dom_aux pd2 (s_cons ts srts))
+    (pd_eq': forall ts m a srts (Hts: find_ts_in_ctx gamma ts = Some (m, a)),
+                                   length srts <> length (m_params m) ->
+        dom_aux pd1 (s_cons ts srts) = dom_aux pd2 (s_cons ts srts)).
+
+  Instance WF_adt_smaller : WellFounded (adt_smaller gamma_valid pf) := adt_smaller_wf gamma_valid pf.
+  
+  (*Mutual wf defs not supported ugh*)
+(*Equations build_iso_pd_aux (x: {s : sort & domain (dom_aux pd1) s}) : domain (dom_aux pd2) (projT1 x) by
+  wf (size_sort gamma (projT1 x), x) (lexprod _ _ lt (adt_smaller gamma_valid pf)) :=
+  build_iso_pd_aux (existT s_int d) := d;
+  build_iso_pd_aux (existT s_real d) := d;
+  build_iso_pd_aux (existT (s_cons ts srts) d) with inspect (find_ts_in_ctx gamma ts) => {
+    | Some (m, a) eqn:Hfind =>
+        let m_in := proj1' (find_ts_in_ctx_some _ _ _ _ Hfind) in
+        let a_in := proj1' (proj2' (find_ts_in_ctx_some _ _ _ _ Hfind)) in
+        let Hts := proj2' (proj2' (find_ts_in_ctx_some _ _ _ _ Hfind)) in
+        (*TODO*)
+        let srts_len : length srts = length (m_params m) := _ in
+        let x : adt_rep pd1 a srts := dom_cast _ (f_equal (fun ts => s_cons ts srts) Hts) d in
+        let r := find_constr_rep gamma_valid pd1 pf m_in a_in srts_len x in
+        let c := projT1 r in
+        let c_in := fst (proj1_sig (projT2 r)) in
+        let al := snd (proj1_sig (projT2 r)) in
+        build_iso_pd_aux_args al
+    | None eqn:Hfind => scast _ (pd_eq ts srts Hfind) d
+    }
+where build_iso_pd_aux_args {srts: list sort} (al: arg_list (domain (dom_aux pd1)) srts) : arg_list (domain (dom_aux pd2)) srts :=
+  build_iso_pd_aux_args [] HList_nil => HList_nil*)
+
+  Fixpoint build_iso_pd_aux (s: sort) (d: domain (dom_aux pd1) s)
+    (ACC: Acc (lexprod _ _ lt (adt_smaller gamma_valid pf))
+            (size_sort gamma s, pack_sort_dom s d)) {struct ACC} :
+    domain (dom_aux pd2) s :=
+    match s return forall (d: domain (dom_aux pd1) s),
+        Acc (lexprod _ _ lt (adt_smaller gamma_valid pf)) (size_sort gamma s, pack_sort_dom s d) ->
+        domain (dom_aux pd2) s with
+    | s_int => fun z _ => z
+    | s_real => fun r _ => r
+    | s_cons ts srts => fun d ACC =>                
+        (match find_ts_in_ctx gamma ts as b return find_ts_in_ctx gamma ts = b -> domain (dom_aux pd2) (s_cons ts srts) with
+        | None => fun Hts => scast (pd_eq ts srts Hts) d
+         | Some (m, a) => fun Hfind =>
+            match (Nat.eqb_spec (length srts) (length (m_params m))) with
+            | ReflectF Hneq => 
+                 scast (pd_eq' ts m a srts Hfind Hneq) d
+            | ReflectT srts_len => 
+                let m_in := proj1' (find_ts_in_ctx_some _ _ _ _ Hfind) in
+                let a_in := proj1' (proj2' (find_ts_in_ctx_some _ _ _ _ Hfind)) in
+                let Hts := proj2' (proj2' (find_ts_in_ctx_some _ _ _ _ Hfind)) in
+                (*TODO*)
+                (*let srts_len : length srts = length (m_params m) := _ in*)
+                let x : adt_rep pd1 a srts := dom_cast _ (f_equal (fun ts => s_cons ts srts) Hts) d in
+                let r := find_constr_rep gamma_valid pd1 pf m_in a_in srts_len x in
+                let c := projT1 r in
+                let c_in := fst (proj1_sig (projT2 r)) in
+                let al := snd (proj1_sig (projT2 r)) in
+                (*TODO: assume hypothesis about arg list/domain elts maybe need Forall on arg_list*)
+                let res := constr_rep gamma_valid pd2 pf2 m_in a_in c_in srts_len
+                             ((fix build_iso_pd_aux_args {srts1: list sort}
+                                 (al: arg_list (domain (dom_aux pd1)) srts1)
+                                 (Hall: hlist_forall (fun x => lexprod nat {s & domain (dom_aux pd1) s} lt
+                                                                       (adt_smaller gamma_valid pf)
+                                                     (size_sort gamma (projT1 x), x)
+                                                     (size_sort gamma (s_cons ts srts), 
+                                                       pack_sort_dom (s_cons ts srts) d)) srts1 al)
+
+ : arg_list (domain (dom_aux pd2)) srts1 :=
+                                 match srts1 return forall (al: arg_list (domain (dom_aux pd1)) srts1), 
+                                     hlist_forall _ srts1 al ->  arg_list (domain (dom_aux pd2)) srts1 with
+                                 | nil => fun h Hall => HL_nil _
+                                 | s1 :: stl => fun h Hall => 
+                                    let H1 :=  (hlist_forall_inv_hd sort_eq_dec Hall) in
+                                    let H2 :  lexprod nat {s : sort & domain (dom_aux pd1) s} lt (adt_smaller gamma_valid pf)
+    (size_sort gamma s1, pack_sort_dom s1 (hlist_hd h))
+    (size_sort gamma (s_cons ts srts), pack_sort_dom (s_cons ts srts) d) := H1 in
+                                                   HL_cons (domain (dom_aux pd2)) _ _ 
+                                                      (build_iso_pd_aux s1 (hlist_hd h)  
+                                                         (Wf.Acc_inv ACC H2))
+                                                      (build_iso_pd_aux_args (hlist_tl h) (hlist_forall_inv_tl sort_eq_dec Hall))
+                                 end al Hall) (sym_sigma_args c srts) al 
+                             ( constr_rep_lexprod gamma_valid pd1 pf m_in a_in c_in srts_len Hts
+                                (proj2_sig (projT2 r)))) in
+                dom_cast (dom_aux pd2) (f_equal (fun ts => s_cons ts srts) (eq_sym Hts)) res
+            end
+        end eq_refl )
+    end d ACC.
+
+End BuildPd.
