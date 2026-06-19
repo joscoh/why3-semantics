@@ -1103,7 +1103,14 @@ forall (l: list A), hlist f l  -> Prop :=
 Lemma hlist_forall_inv_hd {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y}) 
 {f: A -> Type} {P: {x: A & f x} -> Prop} {x t h}
 (Hall: hlist_forall P (x :: t) h):
-P (existT x (hlist_hd h)).
+  P (existT x (hlist_hd h)).
+  (*:=
+  match x :: t as l return forall (Hl: l = x :: t) (h: hlist f l),
+      hlist_forall P l h -> P (existT x (hlist_hd h)) with
+  | nil => fun Hl _ _ => ltac:(discriminate)
+  | x1 :: t1 => fun Hl h Hall => _
+  end.*)
+  
 Proof.
   pose proof (hlist_inv h) as Hh. 
   inversion Hall; subst.
@@ -1224,6 +1231,128 @@ Proof.
       apply (mut_ts_pairs_subst_smaller gamma_valid m_in a_in); assumption.
 Qed.
 
+(*TODO: transparency issues?*)
+Definition hlist_forall_lexprod_acc {A: Type} (eq_dec: forall (x y : A), {x = y} + {x <> y})
+  {f: A -> Type} {N1 N2: Type}
+  {n1: {s: A & f s} -> N1}
+  {n2: {s: A & f s} -> N2}
+  {R1: N1 -> N1 -> Prop}
+  {R2: N2 -> N2 -> Prop}
+  {d: {s: A & f s}}
+  (ACC: Acc (lexprod N1 N2 R1 R2) (n1 d, n2 d)):
+  forall (l: list A) (al: hlist f l)
+         (Hall: hlist_forall (fun x => lexprod N1 N2 R1 R2 (n1 x, n2 x) (n1 d, n2 d)) l al),
+    hlist_forall (fun x => Acc (lexprod N1 N2 R1 R2) (n1 x, n2 x)) l al.
+Proof.
+  refine (fix all (l: list A) (al: hlist f l)
+         (Hall: hlist_forall (fun x => lexprod N1 N2 R1 R2 (n1 x, n2 x) (n1 d, n2 d)) l al) {struct l} :=
+            match l return forall al: hlist f l,
+                    hlist_forall (fun x => lexprod N1 N2 R1 R2 (n1 x, n2 x) (n1 d, n2 d)) l al ->
+                    hlist_forall (fun x => Acc (lexprod N1 N2 R1 R2) (n1 x, n2 x)) l al with
+    | [] => fun h Hall => _
+    | x :: tl => fun h Hall => _
+    end al Hall).
+  - pose proof (hlist_nil h) as Hal. rewrite Hal. apply HL_Nil.
+  - pose proof (hlist_inv h) as Hal. rewrite Hal. constructor.
+    + apply (Wf.Acc_inv ACC). exact (hlist_forall_inv_hd eq_dec Hall).
+    + apply (all tl (hlist_tl h) (hlist_forall_inv_tl eq_dec Hall)).
+Defined.
+
+
+Lemma constr_rep_lexprod_acc {gamma: context} (gamma_valid: valid_context gamma)
+(pd: pi_dom) (pf: pi_funpred gamma_valid pd)
+{m a} {c: funsym} {srts ts al d}
+(*{y: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)} *)
+(m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+(srts_len: length srts = length (m_params m)) (Hts: ts = adt_name a)
+(Hd: dom_cast (dom_aux pd) (f_equal (fun ts => s_cons ts srts) Hts) d = constr_rep gamma_valid pd pf m_in a_in c_in srts_len al)
+(ACC: Acc (lexprod nat {s : sort & domain (dom_aux pd) s} lt (adt_smaller gamma_valid pf))
+        (size_sort gamma (projT1 (existT (s_cons ts srts) d)), existT (s_cons ts srts) d)):
+hlist_forall
+    (fun x : {s : sort & domain (dom_aux pd) s} =>
+     Acc (lexprod nat {s : sort & domain (dom_aux pd) s} lt (adt_smaller gamma_valid pf))
+       (size_sort gamma (projT1 x), x))
+    (sym_sigma_args c srts) al.
+Proof.
+  apply hlist_forall_lexprod_acc with (d:=existT _ d).
+  - exact sort_eq_dec.
+  - exact ACC.
+  - apply (constr_rep_lexprod gamma_valid pd pf m_in a_in c_in srts_len Hts Hd).
+Qed.
+
+
+(*Will equations work with nested? Prob not. Do Fixpoint*)
+Definition hlist_dep_map {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  {f1 f2: A -> Type} {P: {a : A & f1 a} -> Prop} (f: forall (x: {a: A & f1 a}), P x -> f2 (projT1 x)) :=
+  fix dep_map (l: list A) (h: hlist f1 l) (Hall: hlist_forall P l h) : hlist f2 l :=
+    match l return forall (h: hlist f1 l), hlist_forall P l h -> hlist f2 l with
+    | [] => fun _ _ => HL_nil _
+    | x :: tl => fun h Hall => HL_cons _ x tl
+                                 (f (existT x (hlist_hd h)) (hlist_forall_inv_hd eq_dec Hall))
+                                 (dep_map tl (hlist_tl h) (hlist_forall_inv_tl eq_dec Hall))
+    end h Hall.
+
+
+(*A version specialized to Acc because we cannot just use [hlist_forall_inv_hd] for termination*)
+Definition hlist_dep_map_acc {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  {f1 f2: A -> Type}
+  {N1 N2: Type}
+  {n1: {s: A & f1 s} -> N1}
+  {n2: {s: A & f1 s} -> N2}
+  {R1: N1 -> N1 -> Prop}
+  {R2: N2 -> N2 -> Prop}
+  {d: {s: A & f1 s}}
+  (ACC: Acc (lexprod N1 N2 R1 R2) (n1 d, n2 d))
+  (f: forall (x: {a: A & f1 a}), Acc (lexprod N1 N2 R1 R2) (n1 x, n2 x) -> f2 (projT1 x)) :
+  forall (l: list A) (h: hlist f1 l)
+         (Hall: hlist_forall (fun x => lexprod N1 N2 R1 R2 (n1 x, n2 x) (n1 d, n2 d)) l h),
+    hlist f2 l.
+Proof.
+   refine (fix all (l: list A) (al: hlist f1 l)
+         (Hall: hlist_forall (fun x => lexprod N1 N2 R1 R2 (n1 x, n2 x) (n1 d, n2 d)) l al) {struct l} :=
+            match l return forall al: hlist f1 l,
+                    hlist_forall (fun x => lexprod N1 N2 R1 R2 (n1 x, n2 x) (n1 d, n2 d)) l al ->
+                    hlist f2 l with
+    | [] => fun h Hall => HL_nil _
+            | x :: tl => fun h Hall => HL_cons _ x tl (f (existT x (hlist_hd h)) (Wf.Acc_inv ACC
+                                         (hlist_forall_inv_hd eq_dec Hall)))
+                                               (all tl (hlist_tl h) (hlist_forall_inv_tl eq_dec Hall))
+            end al Hall).
+Defined.
+
+Require Import Stdlib.Logic.ProofIrrelevance.
+
+(*We prove this is equal to what we want to reason about*)
+(*NOTE: assume proof irrel here, could maybe make everything transparent
+ and prove without, but dependent types make painful*)
+Lemma hlist_dep_map_acc_eq  {A: Type} (eq_dec: forall (x y: A), {x = y} + {x <> y})
+  {f1 f2: A -> Type}
+  {N1 N2: Type}
+  {n1: {s: A & f1 s} -> N1}
+  {n2: {s: A & f1 s} -> N2}
+  {R1: N1 -> N1 -> Prop}
+  {R2: N2 -> N2 -> Prop}
+  {d: {s: A & f1 s}}
+  (ACC: Acc (lexprod N1 N2 R1 R2) (n1 d, n2 d))
+  (f: forall (x: {a: A & f1 a}), Acc (lexprod N1 N2 R1 R2) (n1 x, n2 x) -> f2 (projT1 x))
+  (l: list A) (h: hlist f1 l)
+  (Hall: hlist_forall (fun x => lexprod N1 N2 R1 R2 (n1 x, n2 x) (n1 d, n2 d)) l h) :
+  hlist_dep_map_acc eq_dec ACC f l h Hall =
+    hlist_dep_map eq_dec f l h (hlist_forall_lexprod_acc eq_dec ACC l h Hall).
+Proof.
+  generalize dependent  (hlist_forall_lexprod_acc eq_dec ACC l h Hall).
+  induction l as [| x tl]; simpl; auto. intros Hall1.
+  f_equal.
+  - f_equal. apply proof_irrelevance.
+  - apply IHtl.
+Qed.
+
+      (*Notes: 1. no equations bc no mutual wf recursion 2. Fix complicated bc nontrivial termination
+metric, not just argument with custom measure, need to encode e.g. sort size in type
+3. need induction principle bc cannot generalize multiple versions, hit dep type issues
+4. need custom hlist acc (not just map and forall_impl) because otherwise Coq cannot tell
+that we call on Acc_inv*)
+
 
 Section BuildPd.
 
@@ -1238,6 +1367,69 @@ Section BuildPd.
   Instance WF_adt_smaller : WellFounded (adt_smaller gamma_valid pf) := adt_smaller_wf gamma_valid pf.
   
   (*Mutual wf defs not supported ugh*)
+
+ Fixpoint build_iso_pd_aux (x: {s : sort & domain (dom_aux pd1) s})
+    (ACC: Acc (lexprod _ _ lt (adt_smaller gamma_valid pf))
+            (size_sort gamma (projT1 x), x)) {struct ACC} :
+    domain (dom_aux pd2) (projT1 x) :=
+    match x return   Acc (lexprod _ _ lt (adt_smaller gamma_valid pf)) (size_sort gamma (projT1 x), x) ->
+        domain (dom_aux pd2) (projT1 x) with
+    | existT s_int z => fun _ => z
+    | existT s_real r => fun _ => r
+    | existT (s_cons ts srts) d => fun ACC =>          
+        (match find_ts_in_ctx gamma ts as b return find_ts_in_ctx gamma ts = b -> domain (dom_aux pd2) (s_cons ts srts) with
+        | None => fun Hts => scast (pd_eq ts srts Hts) d
+         | Some (m, a) => fun Hfind =>
+            match (Nat.eqb_spec (length srts) (length (m_params m))) with
+            | ReflectF Hneq => 
+                 scast (pd_eq' ts m a srts Hfind Hneq) d
+            | ReflectT srts_len => 
+                let m_in := proj1' (find_ts_in_ctx_some _ _ _ _ Hfind) in
+                let a_in := proj1' (proj2' (find_ts_in_ctx_some _ _ _ _ Hfind)) in
+                let Hts := proj2' (proj2' (find_ts_in_ctx_some _ _ _ _ Hfind)) in
+                (*TODO*)
+                (*let srts_len : length srts = length (m_params m) := _ in*)
+                let x : adt_rep pd1 a srts := dom_cast _ (f_equal (fun ts => s_cons ts srts) Hts) d in
+                let r := find_constr_rep gamma_valid pd1 pf m_in a_in srts_len x in
+                let c := projT1 r in
+                let c_in := fst (proj1_sig (projT2 r)) in
+                let al := snd (proj1_sig (projT2 r)) in
+                (*TODO: assume hypothesis about arg list/domain elts maybe need Forall on arg_list*)
+                let res := constr_rep gamma_valid pd2 pf2 m_in a_in c_in srts_len
+                             (@hlist_dep_map_acc _ sort_eq_dec (domain (dom_aux pd1)) (domain (dom_aux pd2))
+                                nat {s: sort & domain (dom_aux pd1) s} (fun n1 => size_sort gamma (projT1 n1))
+                                (fun x => x) lt (adt_smaller gamma_valid pf) _ ACC build_iso_pd_aux _ al
+                                            ( constr_rep_lexprod gamma_valid pd1 pf m_in a_in c_in srts_len Hts
+                                (proj2_sig (projT2 r))))
+                             (*((fix build_iso_pd_aux_args {srts1: list sort}
+                                 (al: arg_list (domain (dom_aux pd1)) srts1)
+                                 (Hall: hlist_forall (fun x => lexprod nat {s & domain (dom_aux pd1) s} lt
+                                                                       (adt_smaller gamma_valid pf)
+                                                     (size_sort gamma (projT1 x), x)
+                                                     (size_sort gamma (s_cons ts srts), 
+                                                       pack_sort_dom (s_cons ts srts) d)) srts1 al)
+
+                                : arg_list (domain (dom_aux pd2)) srts1 :=
+                                 match srts1 return forall (al: arg_list (domain (dom_aux pd1)) srts1), 
+                                     hlist_forall _ srts1 al ->  arg_list (domain (dom_aux pd2)) srts1 with
+                                 | nil  => fun h Hall => HL_nil _
+                                 | s1 :: stl => fun h Hall => 
+                                    let H1 :=  (hlist_forall_inv_hd sort_eq_dec Hall) in
+                                    let H2 :  lexprod nat {s : sort & domain (dom_aux pd1) s} lt (adt_smaller gamma_valid pf)
+    (size_sort gamma s1, pack_sort_dom s1 (hlist_hd h))
+    (size_sort gamma (s_cons ts srts), pack_sort_dom (s_cons ts srts) d) := H1 in
+                                                   HL_cons (domain (dom_aux pd2)) _ _ 
+                                                      (build_iso_pd_aux (existT s1 (hlist_hd h))  
+                                                         (Wf.Acc_inv ACC H2))
+                                                      (build_iso_pd_aux_args (hlist_tl h) (hlist_forall_inv_tl sort_eq_dec Hall))
+                                 end al Hall) (sym_sigma_args c srts) al 
+                             ( constr_rep_lexprod gamma_valid pd1 pf m_in a_in c_in srts_len Hts
+                                (proj2_sig (projT2 r))))*) in
+                dom_cast (dom_aux pd2) (f_equal (fun ts => s_cons ts srts) (eq_sym Hts)) res
+            end
+        end eq_refl )
+    end ACC.
+
 (*Equations build_iso_pd_aux (x: {s : sort & domain (dom_aux pd1) s}) : domain (dom_aux pd2) (projT1 x) by
   wf (size_sort gamma (projT1 x), x) (lexprod _ _ lt (adt_smaller gamma_valid pf)) :=
   build_iso_pd_aux (existT s_int d) := d;
@@ -1257,9 +1449,9 @@ Section BuildPd.
         build_iso_pd_aux_args al
     | None eqn:Hfind => scast _ (pd_eq ts srts Hfind) d
     }
-where build_iso_pd_aux_args {srts: list sort} (al: arg_list (domain (dom_aux pd1)) srts) : arg_list (domain (dom_aux pd2)) srts :=
-  build_iso_pd_aux_args [] HList_nil => HList_nil*)
-
+  where build_iso_pd_aux_args {srts: list sort} (al: arg_list (domain (dom_aux pd1)) srts) : arg_list (domain (dom_aux pd2)) srts :=
+  build_iso_pd_aux_args [] HList_nil => HList_nil.*)
+(*
   Fixpoint build_iso_pd_aux (s: sort) (d: domain (dom_aux pd1) s)
     (ACC: Acc (lexprod _ _ lt (adt_smaller gamma_valid pf))
             (size_sort gamma s, pack_sort_dom s d)) {struct ACC} :
@@ -1316,6 +1508,326 @@ where build_iso_pd_aux_args {srts: list sort} (al: arg_list (domain (dom_aux pd1
                 dom_cast (dom_aux pd2) (f_equal (fun ts => s_cons ts srts) (eq_sym Hts)) res
             end
         end eq_refl )
-    end d ACC.
+    end d ACC.*)
+
+Definition  build_iso_pd (s: sort) (d: domain (dom_aux pd1) s) :  domain (dom_aux pd2) s :=
+  build_iso_pd_aux (existT s d) (wf_lexprod _ _ _ _ Wf_nat.lt_wf (adt_smaller_wf gamma_valid pf) _).
+
+(*Alt version with Equations - need to encode mutual wf recursion*)
+(*
+Definition build_pd_ty := ({s : sort & domain (dom_aux pd1) s} + 
+                             {srts: list sort & arg_list (domain (dom_aux pd1)) srts})%type.
+
+Print Relation_Operators.le_AsB.
+
+Inductive al_smaller : 
+  {srts: list sort & arg_list (domain (dom_aux pd1)) srts} -> 
+  {srts: list sort & arg_list (domain (dom_aux pd1)) srts} -> Prop :=
+  | al_small : forall s srts (x y:  {srts: list sort & arg_list (domain (dom_aux pd1)) srts}) 
+                      (Hx: projT1 x = srts) (Hy: projT1 y = s :: srts),
+      hlist_tl (cast_arg_list Hy (projT2 y)) = (cast_arg_list Hx (projT2 x)) ->
+      al_smaller x y.
+
+Lemma al_smaller_wf : well_founded al_smaller.
+Proof.
+  unfold well_founded.
+  intros a. destruct a as [srts al].
+  revert al. induction srts as [| s srts]; simpl; auto.
+  - intros al. constructor. intros y Hsmall. inversion Hsmall; subst. simpl in *.
+    discriminate.
+  - intros al. constructor. intros y Hsmall. inversion Hsmall; subst. simpl in *.
+    inversion Hy; subst. specialize (IHsrts (hlist_tl al)).
+    assert (Hy = eq_refl) by (apply UIP_dec, list_eq_dec, sort_eq_dec).
+    subst. unfold cast_arg_list in H; simpl in H.
+    rewrite H in IHsrts. destruct y; simpl in *; auto.
+Qed.
+(*Does this need to be Defined?*)
+
+Definition build_pd_rel := Relation_Operators.le_AsB {s : sort & domain (dom_aux pd1) s}
+   {srts: list sort & arg_list (domain (dom_aux pd1)) srts}
+   (fun (x y: {s : sort & domain (dom_aux pd1) s}) => 
+     lexprod _ _ lt (adt_smaller gamma_valid pf) (size_sort gamma (projT1 x), x) (size_sort gamma (projT1 y), y))
+   al_smaller.
+
+Lemma build_pd_rel_wf : well_founded build_pd_rel.
+Proof.
+  apply Disjoint_Union.wf_disjoint_sum.
+  - apply Inverse_Image.wf_inverse_image, wf_lexprod.
+    + apply Wf_nat.lt_wf.
+    + apply adt_smaller_wf.
+  - apply al_smaller_wf.
+Qed.
+
+Definition build_pd_ret (x: build_pd_ty) : Set :=
+  match x with
+    | inl (existT s _) => domain (dom_aux pd2) s
+    | inr (existT srts _) => arg_list (domain (dom_aux pd2)) srts
+  end.
+
+Instance : WellFounded build_pd_rel.
+exact build_pd_rel_wf.
+Defined.
+Check inr.
+Equations build_iso_pd_aux (x: build_pd_ty) : build_pd_ret x  by wf x build_pd_rel :=
+  build_iso_pd_aux (inl (existT s_int d)) => d;
+  build_iso_pd_aux (inl (existT s_real d)) => d;
+  build_iso_pd_aux (inl (existT (s_cons ts srts) d)) with inspect (find_ts_in_ctx gamma ts) => {
+    | Some (m, a) eqn:Hfind =>
+         match (Nat.eqb_spec (length srts) (length (m_params m))) with
+          | ReflectF Hneq => 
+                 scast (pd_eq' ts m a srts Hfind Hneq) d
+          | ReflectT srts_len => 
+              let m_in := proj1' (find_ts_in_ctx_some _ _ _ _ Hfind) in
+              let a_in := proj1' (proj2' (find_ts_in_ctx_some _ _ _ _ Hfind)) in
+              let Hts := proj2' (proj2' (find_ts_in_ctx_some _ _ _ _ Hfind)) in
+              (*TODO*)
+              let x : adt_rep pd1 a srts := dom_cast _ (f_equal (fun ts => s_cons ts srts) Hts) d in
+              let r := find_constr_rep gamma_valid pd1 pf m_in a_in srts_len x in
+              let c := projT1 r in
+              let c_in := fst (proj1_sig (projT2 r)) in
+              let al := snd (proj1_sig (projT2 r)) in
+              let res := constr_rep gamma_valid pd2 pf2 m_in a_in c_in srts_len (build_iso_pd_aux (inr (existT _ al))) in
+              dom_cast (dom_aux pd2) (f_equal (fun ts => s_cons ts srts) (eq_sym Hts)) res
+          end
+    | None eqn:Hfind => scast (pd_eq ts srts Hfind) d
+    };
+  build_iso_pd_aux (inr (existT [] al)) => HL_nil _;
+  build_iso_pd_aux (inr (existT (s1 :: stl) al)) =>  
+    HL_cons (domain (dom_aux pd2)) _ _ (build_iso_pd_aux (inl (existT s1 (hlist_hd al))))
+      (build_iso_pd_aux (inr (existT stl (hlist_tl al)))).
+
+(*If we do this way, need to reason about relation between inl and inr, easier to
+ (maybe) have nested fn in here, do like pattern compile*)
+(*Alternatively, maybe just define orig functin over wrapped args, then do induction on that? maybe?*)
+
+Next Obligation.
+Admitted.
+Next Obligation.
+Admitted.
+Next Obligation.
+Admitted.
+Next Obligation.
+
+                                                      (build_iso_pd_aux s1 (hlist_hd h)  
+                                                         (Wf.Acc_inv ACC H2))
+                                                      (build_iso_pd_aux_args (hlist_tl h) (hlist_forall_inv_tl sort_eq_dec Hall))
+    
+    (*Interesting case*)
+.
+
+
+.  domain (dom_aux pd2) s.
+
+ *)
+
+(*Induction principle*)
+Opaque size_sort.
+Check hlist_map.
+
+
+Theorem build_iso_pd_aux_ind
+  (P: forall (x: {s: sort & domain (dom_aux pd1) s}), domain (dom_aux pd2) (projT1 x) -> Prop)
+  (P_int: forall (z: Z), P (existT s_int z) z)
+  (P_real: forall (r: R), P (existT s_real r) r)
+  (P_noadt: forall ts srts (Hfind: find_ts_in_ctx gamma ts = None)
+                       (Heq: dom_aux pd1 (s_cons ts srts) = dom_aux pd2 (s_cons ts srts)) d,
+      P (existT (s_cons ts srts) d) (scast Heq d))
+  (P_nolen: forall ts srts m a (Hfind: find_ts_in_ctx gamma ts = Some (m, a))
+                     (Hlen: length srts <> length (m_params m))
+                     (Heq: dom_aux pd1 (s_cons ts srts) = dom_aux pd2 (s_cons ts srts)) d,
+      P (existT (s_cons ts srts) d) (scast Heq d))
+   (IHconstr: forall m a c srts (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
+              (srts_len: length srts = length (m_params m)) d al
+              (Hd: d = constr_rep gamma_valid pd1 pf m_in a_in c_in srts_len al)
+              (Hacc: hlist_forall
+                       (fun x : {s : sort & domain (dom_aux pd1) s} =>
+                          Acc (lexprod nat {s : sort & domain (dom_aux pd1) s} lt (adt_smaller gamma_valid pf))
+                            (size_sort gamma (projT1 x), x))
+                       (sym_sigma_args c srts) al)
+              (Hall: hlist_forall (fun x : {s: sort & domain (dom_aux pd1) s} => forall ACC,
+                                       P x (build_iso_pd_aux x ACC)) _ al),
+      P (existT (s_cons (adt_name a) srts) d)
+        (constr_rep gamma_valid pd2 pf2 m_in a_in c_in srts_len
+           (hlist_dep_map sort_eq_dec build_iso_pd_aux
+              (sym_sigma_args c srts) al Hacc))):
+  forall (x: {s: sort & domain (dom_aux pd1) s})
+         (ACC: Acc (lexprod nat {s : sort & domain (dom_aux pd1) s} lt (adt_smaller gamma_valid pf))
+                 (size_sort gamma (projT1 x), x)),
+    P x (build_iso_pd_aux x ACC).
+Proof.
+  intros x.
+   (*Very awkward to be able to use well-founded induction, can't "remember" (size_sort (projT1 x), x) directly*)
+  set (y := (size_sort gamma (projT1 x))) in *.
+  set (z := (y, x)).
+  assert (Hz: z = (y, x)) by (reflexivity). unfold z.
+  generalize dependent z. intros z Hz.
+  subst y. generalize dependent x. 
+  (*Finally, induction*)
+  induction z as [z IH] using (well_founded_ind
+                                 ((wf_lexprod _ _ _ _ Wf_nat.lt_wf (adt_smaller_wf gamma_valid pf)))).
+  (*TODO: does this work?*)
+  intros [s d] Hz ACC. subst z.
+  destruct ACC as [acc]. simpl.
+  destruct s as [| | ts srts].
+  1: { apply P_int. }
+  1: { apply P_real. }
+  generalize dependent (find_ts_in_ctx_some gamma ts).
+  generalize dependent (pd_eq ts).
+  generalize dependent (pd_eq' ts).
+  destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : hfind.
+  2: { intros ? ? ?. apply P_noadt. auto. }
+  destruct (Nat.eqb_spec (length srts) (length (m_params m))) as [srts_len | Hnolen].
+  2: { intros. eapply P_nolen; eauto. }
+  intros _ _ Hadt.
+  (*clean up goal TODO do we need*)
+  generalize dependent  (proj1' (Hadt m a eq_refl)).
+  generalize dependent (proj1' (proj2' (Hadt m a eq_refl))).
+  generalize dependent (proj2' (proj2' (Hadt m a eq_refl))).
+  clear Hadt.
+  intros Hts a_in m_in.
+  subst ts. simpl. repeat rewrite !dom_cast_refl.
+  unfold dom_cast. simpl.
+  set (r := (find_constr_rep gamma_valid pd1 pf m_in a_in srts_len d)) in *.
+  generalize dependent (constr_rep_lexprod gamma_valid pd1 pf m_in a_in (fst (proj1_sig (projT2 r))) srts_len eq_refl
+                          (proj2_sig (projT2 r))).
+  destruct r as [c [[c_in al] Hd]]. simpl. simpl in Hd.
+  intros Hallacc.
+  rewrite hlist_dep_map_acc_eq. apply IHconstr; auto.
+  (*Now prove IH*)
+  clear -IH Hallacc.
+  generalize dependent (sym_sigma_args c srts). induction l as [| x t IHl]; simpl.
+  - intros al _. pose proof (hlist_nil al) as Hal; rewrite Hal; constructor.
+  - intros al Hall. pose proof (hlist_inv al) as Hal; rewrite Hal; constructor.
+    + intros ACC. eapply IH. 2: reflexivity. apply (hlist_forall_inv_hd sort_eq_dec Hall).
+    + apply IHl. apply (hlist_forall_inv_tl sort_eq_dec Hall).
+Qed.
 
 End BuildPd.
+
+Theorem build_iso_pd_aux_inv {gamma: context} (gamma_valid: valid_context gamma)
+  {pd1 pd2: pi_dom} (pf1: pi_funpred gamma_valid pd1) (pf2: pi_funpred gamma_valid pd2)
+  (Hnoadt1: (forall (ts : typesym) (srts : list sort),
+        find_ts_in_ctx gamma ts = None -> dom_aux pd1 (s_cons ts srts) = dom_aux pd2 (s_cons ts srts)))
+  (Hnolen1: (forall (ts : typesym) (m : mut_adt) (a : alg_datatype) (srts : list sort),
+        find_ts_in_ctx gamma ts = Some (m, a) ->
+        Datatypes.length srts <> Datatypes.length (m_params m) ->
+        dom_aux pd1 (s_cons ts srts) = dom_aux pd2 (s_cons ts srts)))
+  (Hnoadt2: (forall (ts : typesym) (srts : list sort),
+        find_ts_in_ctx gamma ts = None -> dom_aux pd2 (s_cons ts srts) = dom_aux pd1 (s_cons ts srts)))
+  (Hnolen2: (forall (ts : typesym) (m : mut_adt) (a : alg_datatype) (srts : list sort),
+        find_ts_in_ctx gamma ts = Some (m, a) ->
+        Datatypes.length srts <> Datatypes.length (m_params m) ->
+        dom_aux pd2 (s_cons ts srts) = dom_aux pd1 (s_cons ts srts)))
+  (x: {s: sort & domain (dom_aux pd1) s}) ACC1 ACC2:
+  build_iso_pd_aux gamma_valid pd2 pd1 pf2 pf1 Hnoadt2  Hnolen2 (existT (projT1 x) 
+    ((build_iso_pd_aux gamma_valid pd1 pd2 pf1 pf2 Hnoadt1 Hnolen1 x ACC1))) ACC2 = projT2 x.
+Proof.
+  simpl in ACC2.
+  (*Use induction principle, cannot prove directly*)
+  revert ACC2.
+  revert x ACC1.
+  apply (build_iso_pd_aux_ind gamma_valid pd1 pd2 pf1 pf2 Hnoadt1 Hnolen1
+           (fun x res =>
+              forall (ACC2 : Acc (lexprod nat {s : sort & domain (dom_aux pd2) s} lt (adt_smaller gamma_valid pf2))
+              (size_sort gamma (projT1 x),
+               existT (projT1 x) res)),
+                build_iso_pd_aux gamma_valid pd2 pd1 pf2 pf1 Hnoadt2 Hnolen2 (existT (projT1 x) res) ACC2 =
+                  projT2 x)).
+  - (*int*)
+    intros z ACC2. destruct ACC2; reflexivity.
+  - (*real*)
+    intros r ACC2. destruct ACC2; reflexivity.
+  - (*none*)
+    intros ts srts Hnone Heq d ACC2. destruct ACC2. simpl.
+    generalize dependent (find_ts_in_ctx_some gamma ts).
+    generalize dependent (Hnolen2 ts).
+    generalize dependent (Hnoadt2 ts).
+    rewrite Hnone.
+    intros. rewrite scast_scast. rewrite scast_eq_uip with (H2:=eq_refl). reflexivity.
+  - (*wrong length*)
+    intros ts srts m a Hfind Hlen Heq d ACC2. destruct ACC2. simpl.
+    generalize dependent (find_ts_in_ctx_some gamma ts).
+    generalize dependent (Hnolen2 ts).
+    generalize dependent (Hnoadt2 ts).
+    rewrite Hfind.
+    destruct (Nat.eqb_spec _ _); [contradiction|].
+    intros.  rewrite scast_scast. rewrite scast_eq_uip with (H2:=eq_refl). reflexivity.
+  - (*interesting case*)
+    intros m a c srts m_in a_in c_in srts_len d al Hd Hacc IH. destruct ACC2; simpl.
+    generalize dependent (find_ts_in_ctx_some gamma (adt_name a)).
+    generalize dependent (Hnolen2 (adt_name a)).
+    generalize dependent (Hnoadt2 (adt_name a)).
+    assert (Hfind: find_ts_in_ctx gamma (adt_name a) = Some (m, a)).
+    { apply find_ts_in_ctx_iff; auto. }
+    rewrite Hfind.
+    destruct (Nat.eqb_spec _ _); [|contradiction].
+    intros _ _ Hadt.
+    (*clean up goal TODO do we need*)
+    generalize dependent  (proj1' (Hadt m a eq_refl)).
+    generalize dependent (proj1' (proj2' (Hadt m a eq_refl))).
+    generalize dependent (proj2' (proj2' (Hadt m a eq_refl))).
+    clear Hadt.
+    intros Hts a_in' m_in'.
+    assert (Hts = eq_refl) by (apply UIP_dec, typesym_eq_dec).
+    assert (a_in' = a_in) by (apply bool_irrelevance).
+    assert (m_in' = m_in) by (apply bool_irrelevance).
+    subst. simpl.
+    repeat rewrite !dom_cast_refl.
+    unfold dom_cast. simpl.
+    set (d:=(hlist_dep_map sort_eq_dec (build_iso_pd_aux gamma_valid pd1 pd2 pf1 pf2 Hnoadt1 Hnolen1)
+               (sym_sigma_args c srts) al Hacc)) in *.
+    set (y:=(constr_rep gamma_valid pd2 pf2 m_in a_in c_in srts_len d)) in *.
+    generalize dependent  (constr_rep_lexprod gamma_valid pd2 pf2 m_in a_in
+          (fst (proj1_sig (projT2 (find_constr_rep gamma_valid pd2 pf2 m_in a_in e y)))) e eq_refl
+          (proj2_sig (projT2 (find_constr_rep gamma_valid pd2 pf2 m_in a_in e y)))).
+    assert (He: e = srts_len) by (apply UIP_dec, Nat.eq_dec). subst.
+    set (r := (find_constr_rep gamma_valid pd2 pf2 m_in a_in srts_len y)) in *.
+    destruct r as [c' [[c_in' al'] Hd]]. simpl. simpl in Hd.
+    (*Use inj+disj to show that constr and args are same*)
+    destruct (constrs_inj_strong gamma_valid _ _ m_in a_in _ _ _ _ _ Hd) as [c_eq a_eq].
+    subst c'. unfold cast_arg_list in a_eq; simpl in a_eq.
+    subst al'.
+    assert (c_in' = c_in) by (apply bool_irrelevance); subst c_in'.
+    intros Halllex.
+    f_equal.
+    rewrite hlist_dep_map_acc_eq.
+    match goal with |- hlist_dep_map _ _ _ _ ?H = _ => generalize dependent H end.
+    subst d.
+    (*TODO: prove map_map lemma, but for now, just use induction*)
+    clear -IH.
+    generalize dependent (sym_sigma_args c srts).
+    clear.
+    induction l as [| x t IHl]; simpl.
+    + intros al _ _ _. symmetry. apply (hlist_nil al).
+    + intros al Hacc IH Hlex.
+      pose proof (hlist_inv al) as Hal. rewrite Hal. f_equal.
+      * apply (hlist_forall_inv_hd sort_eq_dec IH).
+      * apply IHl. apply (hlist_forall_inv_tl sort_eq_dec IH).
+Qed.
+
+
+Theorem build_iso_pd_inv {gamma: context} (gamma_valid: valid_context gamma)
+  {pd1 pd2: pi_dom} (pf1: pi_funpred gamma_valid pd1) (pf2: pi_funpred gamma_valid pd2)
+  (Hnoadt1: (forall (ts : typesym) (srts : list sort),
+        find_ts_in_ctx gamma ts = None -> dom_aux pd1 (s_cons ts srts) = dom_aux pd2 (s_cons ts srts)))
+  (Hnolen1: (forall (ts : typesym) (m : mut_adt) (a : alg_datatype) (srts : list sort),
+        find_ts_in_ctx gamma ts = Some (m, a) ->
+        Datatypes.length srts <> Datatypes.length (m_params m) ->
+        dom_aux pd1 (s_cons ts srts) = dom_aux pd2 (s_cons ts srts)))
+  (Hnoadt2: (forall (ts : typesym) (srts : list sort),
+        find_ts_in_ctx gamma ts = None -> dom_aux pd2 (s_cons ts srts) = dom_aux pd1 (s_cons ts srts)))
+  (Hnolen2: (forall (ts : typesym) (m : mut_adt) (a : alg_datatype) (srts : list sort),
+        find_ts_in_ctx gamma ts = Some (m, a) ->
+        Datatypes.length srts <> Datatypes.length (m_params m) ->
+        dom_aux pd2 (s_cons ts srts) = dom_aux pd1 (s_cons ts srts)))
+  (s: sort) (d: domain (dom_aux pd1) s):
+  build_iso_pd gamma_valid pd2 pd1 pf2 pf1 Hnoadt2 Hnolen2 s 
+    (build_iso_pd gamma_valid pd1 pd2 pf1 pf2 Hnoadt1 Hnolen1 s d) = d.
+Proof.
+  apply (build_iso_pd_aux_inv gamma_valid pf1 pf2 Hnoadt1 Hnolen1 Hnoadt2 Hnolen2 (existT s d)).
+Qed.
+
+(*TODO: define full iso*)
+  
+
+
