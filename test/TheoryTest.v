@@ -9,7 +9,7 @@ Set Bullet Behavior "Strict Subproofs".
   function symbols that take no arguments. We give some
   utilities*)
 Definition mk_constant (name: string) (ty: vty):=
-  Build_funsym (Build_fpsym name nil nil erefl erefl) ty.
+  mk_funsym (mk_fpsym name nil nil erefl erefl) ty.
 
 Notation mk_typemap l := (exist _ l erefl).
 Definition emp_typemap : ty_map := (exist _ nil erefl).
@@ -22,8 +22,8 @@ Module Alg.
 Definition t : typesym := mk_ts "t" nil.
 Definition t_ty : vty := vty_cons t nil.
 
-Definition op: funsym := Build_funsym 
-  (Build_fpsym "op" nil [t_ty; t_ty] erefl erefl)
+Definition op: funsym := mk_funsym 
+  (mk_fpsym "op" nil [t_ty; t_ty] erefl erefl)
   t_ty false 0 erefl.
 
 Definition x : vsymbol := ("x"%string, t_ty).
@@ -151,8 +151,8 @@ End CommutativeMonoid.
 
 Module Group.
 
-Definition inv : funsym := Build_funsym 
-  (Build_fpsym "inv" nil [t_ty] erefl erefl) t_ty false 0 erefl.
+Definition inv : funsym := mk_funsym 
+  (mk_fpsym "inv" nil [t_ty] erefl erefl) t_ty false 0 erefl.
 
 Definition group : theory :=
   rev [
@@ -223,14 +223,14 @@ Module Ring.
   We do not support the infix notation of why3*)
 
 Definition zero : funsym := mk_constant "zero" t_ty false 0 erefl.
-Definition plus : funsym := Build_funsym 
-  (Build_fpsym "plus" nil [t_ty; t_ty] erefl erefl)
+Definition plus : funsym := mk_funsym 
+  (mk_fpsym "plus" nil [t_ty; t_ty] erefl erefl)
   t_ty false 0 erefl.
-Definition mult : funsym := Build_funsym 
-  (Build_fpsym "mult" nil [t_ty; t_ty] erefl erefl)
+Definition mult : funsym := mk_funsym 
+  (mk_fpsym "mult" nil [t_ty; t_ty] erefl erefl)
   t_ty false 0 erefl.
-Definition neg : funsym := Build_funsym 
-(Build_fpsym "neg" nil [t_ty] erefl erefl)
+Definition neg : funsym := mk_funsym 
+(mk_fpsym "neg" nil [t_ty] erefl erefl)
 t_ty false 0 erefl.
 
 (*Unlike regular why3, we require qualified names in "clone"*)
@@ -238,7 +238,7 @@ Definition MA_t : typesym := mk_ts "MulAssoc.t" nil.
 Definition MA_t_ty : vty := vty_cons MA_t nil.
 (*We have utilities to do this, but we are testing them, so we
   do it by hand*)
-Definition MA_op: funsym := Build_funsym (Build_fpsym "MulAssoc.op" nil [MA_t_ty; MA_t_ty] erefl erefl)
+Definition MA_op: funsym := mk_funsym (mk_fpsym "MulAssoc.op" nil [MA_t_ty; MA_t_ty] erefl erefl)
   MA_t_ty false 0 erefl.
 
 Definition ring : theory :=

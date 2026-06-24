@@ -1165,6 +1165,7 @@ Definition sub_t_equiv t1 x t := proj_tm (sub_equiv t1 x) t.
 Definition sub_f_equiv t1 x f := proj_fmla (sub_equiv t1 x) f.
 
 (*Previous substitution lemma comes out as corollary*)
+Opaque vsymbol_eq_dec.
 Lemma sub_t_rep {gamma}  (gamma_valid : valid_context gamma) 
 (pd : pi_dom) (pf : pi_funpred gamma_valid pd) 
 (vt : val_typevar) (t t1 : term) (x : string) 
@@ -1196,11 +1197,11 @@ Proof.
     match goal with |- context [@map_arg_list_forall ?a ?b ?c ?x ?y] => generalize dependent (@map_arg_list_forall a b c x y) end.
     clear Hall.
     (*need to generalize*) simpl. unfold keylist, vals, vsymbol in *. 
-    rewrite elements_singleton.
-    simpl. intros Hall. simp terms_to_hlist. simpl.
+    rewrite elements_singleton. simpl. 
+    intros Hall. simp terms_to_hlist.
     destruct (vty_eq_dec _ _); unfold substi. 
     + vsym_eq (x, ty1) x0.
-      * vsym_eq (x, ty1) (x, ty1).
+      *  vsym_eq (x, ty1) (x, ty1).
         rewrite dom_cast_refl. assert (eq_sym e0 = eq_refl) by (apply UIP_dec, vsymbol_eq_dec).
         rewrite H1.
         apply term_rep_irrel.
@@ -1256,6 +1257,7 @@ Proof.
     rewrite aset_disj_equiv. intros y [Hiny1 Hiny2].
     simpl_set_small. apply (H y); auto.
 Qed.
+Transparent vsymbol_eq_dec.
 
 (* repetitive*)
 (*TODO: see what we need*)

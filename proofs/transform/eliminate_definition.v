@@ -431,9 +431,8 @@ Proof.
     destruct b; simpl in *; auto.
     symmetry; apply ty_subst_params_id.
     intros v Hinv.
-    assert (ls_wf: check_asubset (type_vars (f_ret ls)) (list_to_aset (s_params ls))) by (destruct ls; auto).
-    destruct (check_asubset _ _); try discriminate. clear ls_wf. rewrite asubset_def in a.
-    apply a in Hinv. simpl_set; auto.
+    assert (ls_wf := check_asubset_prop (f_ret_WF ls)). rewrite asubset_def in ls_wf.
+    apply ls_wf in Hinv. simpl_set; auto.
 Qed.
 
 
@@ -954,8 +953,7 @@ Proof.
       rewrite Hvs. simpl.
       rewrite <- vt_with_args_cast with (vt:=vt); auto.
       - rewrite Hvt. destruct b; reflexivity.
-      - intros x Hinx. pose proof (s_args_wf ls') as Hsub. unfold is_true in Hsub.
-        rewrite <- (reflect_iff _ _ (check_args_correct _ _) ) in Hsub.
+      - intros x Hinx. pose proof (Hsub := check_args_prop (s_args_WF ls')). 
         specialize (Hsub (nth j (s_args ls') vty_int)).
         rewrite asubset_def in Hsub.
         setoid_rewrite aset_mem_list_to_aset in Hsub.

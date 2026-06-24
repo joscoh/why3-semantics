@@ -135,18 +135,18 @@ Qed.
 
 (*Sub in fpsym*)
 Definition sub_in_fpsym (f: fpsym) : fpsym :=
-  Build_fpsym (s_name f) (s_params f)
+  mk_fpsym (s_name f) (s_params f)
     (map sub_in_vty (s_args f))
-    (check_args_sub (s_args_wf f))
-    (s_params_nodup f).
+    (check_args_sub (s_args_WF f))
+    (s_params_nodupb f).
 
 (*Sub in funsym - only typesyms substituted*)
 Definition sub_in_funsym (f: funsym) : funsym :=
-  Build_funsym (sub_in_fpsym f)
+  mk_funsym (sub_in_fpsym f)
   (sub_in_vty (f_ret f))
   (f_is_constr f)
   (f_num_constrs f)
-  (check_sublist_sub (f_ret_wf f)).
+  (check_sublist_sub (f_ret_WF f)).
 
 (*Sub in alg_datatype - only typesyms can be substituted*)
 
@@ -344,16 +344,16 @@ Proof.
 Qed.
 
 Definition qual_fpsym (f: fpsym) : fpsym :=
-  Build_fpsym (add_prefix (s_name f)) (s_params f)
-    (map qual_vty (s_args f)) (check_args_qual (s_args_wf f)) 
-    (s_params_nodup f).
+  mk_fpsym (add_prefix (s_name f)) (s_params f)
+    (map qual_vty (s_args f)) (check_args_qual (s_args_WF f)) 
+    (s_params_nodupb f).
 
 Definition qual_funsym (f: funsym) : funsym :=
-  Build_funsym (qual_fpsym (f_sym f))
+  mk_funsym (qual_fpsym (f_sym f))
     (qual_vty (f_ret f))
     (f_is_constr f)
     (f_num_constrs f)
-    (check_sublist_qual (f_ret_wf f)).
+    (check_sublist_qual (f_ret_WF f)).
 
 Definition qual_funsym_n (f: funsym) : funsym :=
   if fs_in_ns f n then qual_funsym f else f.

@@ -83,9 +83,6 @@ Proof.
   erewrite dep_map_nth with (d1:=(0, vty_int)). (*For some reason, cant instantiate directly*)
   Unshelve. all: auto.
   - simpl. rewrite combine_nth; simpl; auto. solve_len.
-  - intros x Hin1 Hin2.
-    unfold proj_funsym. f_equal. 
-    apply bool_irrelevance.
   - solve_len.
 Qed. 
 

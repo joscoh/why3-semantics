@@ -161,7 +161,7 @@ Proof.
     exists i. split; try lia. intros d1 d2. rewrite !map_nth_inbound with (d2:=vs_d); auto. simpl.
     f_equal; [apply nth_indep; auto; lia|]. symmetry; apply ty_subst_equiv.
     rewrite asubset_def. intros x Hmemx.
-    pose proof (s_args_wf f).
+    pose proof (s_args_WF f).
     apply check_args_prop with (x:= (snd (nth i args vs_d))) in H.
     - rewrite asubset_def in H. auto.
     - rewrite <- Hargs. rewrite in_map_iff. exists (nth i args vs_d). split; auto.
@@ -174,7 +174,7 @@ Proof.
     apply ty_subst_wf_tm_typed; auto.
     - apply (NoDup_map_sublist _ _ args); auto; [apply aset_to_list_nodup|].
       rewrite sublist_asubset, aset_to_list_to_aset_eq. auto.
-    - pose proof (f_ret_wf f).
+    - pose proof (f_ret_WF f).
       apply check_asubset_prop in H. auto.
   }
   erewrite safe_sub_ts_rep with (Hall:=Hall)(Hty2:=Htysubst).
@@ -182,7 +182,7 @@ Proof.
   {
     inversion Hty2; subst.
     apply ty_subst_equiv.
-    pose proof (f_ret_wf f).
+    pose proof (f_ret_WF f).
     apply check_asubset_prop in H; auto.
   }
   subst.
@@ -219,7 +219,7 @@ Proof.
     rewrite <- funsym_subst_eq; auto; [| apply s_params_Nodup].
     f_equal. apply ty_subst_equiv.
     intros y Hiny.
-    pose proof (s_args_wf f).
+    pose proof (s_args_WF f).
     apply check_args_prop with(x:=(snd (nth i args vs_d))) in H0.
     - apply H0. auto.
     - rewrite <- Hargs. rewrite in_map_iff.
@@ -277,7 +277,7 @@ Proof.
     erewrite ty_subst_equiv; auto.
     rewrite asubset_def.
     intros y Hiny.
-    pose proof (s_args_wf f).
+    pose proof (s_args_WF f).
     apply check_args_prop with(x:=(snd (nth i args vs_d))) in H0.
     - apply H0. auto.
     - rewrite <- Hargs. rewrite in_map_iff.
@@ -300,7 +300,7 @@ Proof.
   2: {
     rewrite asubset_def.
     intros y Hiny.
-    pose proof (s_args_wf f).
+    pose proof (s_args_WF f).
     apply check_args_prop with(x:=(nth i (s_args f) vty_int)) in H0.
     - rewrite asubset_def in H0; apply H0; auto.
     - apply nth_In; inversion Hty2; subst; lia.
@@ -569,7 +569,7 @@ Proof.
     rewrite <- Hargs in Hallty.
     rewrite map_nth_inbound with (d2:=vs_d) in Hallty; auto.
     rewrite <- ty_subst_equiv; auto.
-    pose proof (s_args_wf f).
+    pose proof (s_args_WF f).
     apply check_args_prop with (x:=snd (nth i args vs_d)) in H0;
     auto. rewrite <- Hargs. rewrite in_map_iff.
     exists (nth i args vs_d). split; auto. apply nth_In; auto.
@@ -620,7 +620,7 @@ Proof.
   destruct Hl as [ty1 Htya].
   inversion Htya; subst.
   assert (Hsub: asubset (type_vars (f_ret f)) (list_to_aset (s_params f))). {
-    pose proof (f_ret_wf f).
+    pose proof (f_ret_WF f).
     apply check_asubset_prop in H0; auto.
   }
   apply sub_fun_body_f_ty; auto.
@@ -683,7 +683,7 @@ Proof.
       destruct H0 as [ty1 Htya].
       (*Hardest part: proving typing*)
       assert (Hsub: asubset (type_vars (f_ret f)) (list_to_aset (s_params f))). {
-        pose proof (f_ret_wf f).
+        pose proof (f_ret_WF f).
         apply check_asubset_prop in H0; auto.
       }
       assert (Hty4: term_has_type gamma (sub_body_t f args body (fst a) (snd a)) ty1). {
@@ -754,7 +754,7 @@ Proof.
   destruct Htyi as [tyi Htyi].
    (*Hardest part: proving typing*)
    assert (Hsub: asubset (type_vars (f_ret f)) (list_to_aset (s_params f))). {
-    pose proof (f_ret_wf f).
+    pose proof (f_ret_WF f).
     apply check_asubset_prop in H; auto.
   }
   assert (Hty4: term_has_type gamma (sub_body_t f args body vs ts) tyi). {
@@ -803,7 +803,7 @@ Proof.
   destruct Htyi as [tyi Htyi].
   inversion Htyi; subst.
   apply sub_fun_body_f_ty; auto.
-  pose proof (f_ret_wf f).
+  pose proof (f_ret_WF f).
   apply check_asubset_prop in H; auto.
 Qed.
 
@@ -916,7 +916,7 @@ Proof.
     exists i. split; try lia. intros d1 d2. rewrite !map_nth_inbound with (d2:=vs_d); auto. simpl.
     f_equal; [apply nth_indep; auto; lia|]. symmetry; apply ty_subst_equiv.
     rewrite asubset_def. intros x Hmemx.
-    pose proof (s_args_wf p).
+    pose proof (s_args_WF p).
     apply check_args_prop with (x:= (snd (nth i args vs_d))) in H.
     - rewrite asubset_def in H. auto.
     - rewrite <- Hargs. rewrite in_map_iff. exists (nth i args vs_d). split; auto.
@@ -958,7 +958,7 @@ Proof.
     rewrite <- funsym_subst_eq; auto; [| apply s_params_Nodup].
     f_equal. apply ty_subst_equiv.
     intros y Hiny.
-    pose proof (s_args_wf p).
+    pose proof (s_args_WF p).
     apply check_args_prop with(x:=(snd (nth i args vs_d))) in H0.
     - apply H0. auto.
     - rewrite <- Hargs. rewrite in_map_iff.
@@ -1016,7 +1016,7 @@ Proof.
     erewrite ty_subst_equiv; auto.
     rewrite asubset_def.
     intros y Hiny.
-    pose proof (s_args_wf p).
+    pose proof (s_args_WF p).
     apply check_args_prop with(x:=(snd (nth i args vs_d))) in H0.
     - apply H0. auto.
     - rewrite <- Hargs. rewrite in_map_iff.
@@ -1039,7 +1039,7 @@ Proof.
   2: {
     rewrite asubset_def.
     intros y Hiny.
-    pose proof (s_args_wf p).
+    pose proof (s_args_WF p).
     apply check_args_prop with(x:=(nth i (s_args p) vty_int)) in H0.
     - rewrite asubset_def in H0; apply H0; auto.
     - apply nth_In; inversion Hty2; subst; lia.
@@ -1304,7 +1304,7 @@ Proof.
     rewrite <- Hargs in Hallty.
     rewrite map_nth_inbound with (d2:=vs_d) in Hallty; auto.
     rewrite <- ty_subst_equiv; auto.
-    pose proof (s_args_wf p).
+    pose proof (s_args_WF p).
     apply check_args_prop with (x:=snd (nth i args vs_d)) in H0;
     auto. rewrite <- Hargs. rewrite in_map_iff.
     exists (nth i args vs_d). split; auto. apply nth_In; auto.

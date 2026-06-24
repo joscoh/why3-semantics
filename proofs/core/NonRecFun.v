@@ -52,8 +52,7 @@ Proof.
   {
     apply vt_with_args_in_eq; auto. apply s_params_Nodup.
     intros.
-    pose proof (f_ret_wf f).
-    destruct (check_asubset _ _) as [Hsub | Hsub]; try discriminate. clear H0.
+    pose proof (check_asubset_prop (f_ret_WF f)) as Hsub.
     rewrite asubset_def in Hsub. 
     apply Hsub in H. simpl_set. auto.
   }
@@ -93,11 +92,12 @@ Proof.
       symmetry. rewrite <- Hargs, map_nth_inbound with (d2:=vs_d); auto.
       apply vt_with_args_cast; auto; [| apply s_params_Nodup].
       intros.
-      pose proof (s_args_wf f) as Hargs'.
-      apply check_args_prop with (x:=(snd (nth i args vs_d))) in Hargs'; auto.
-      - rewrite asubset_def in Hargs'. apply Hargs' in H0. simpl_set; auto. 
-      - rewrite <- Hargs. rewrite in_map_iff.
+      pose proof (check_args_prop (s_args_WF f) (snd (nth i args vs_d))) as Hargs'.
+      prove_hyp Hargs'.
+      { rewrite <- Hargs. rewrite in_map_iff.
         exists (nth i args vs_d); auto.
+      }
+      rewrite asubset_def in Hargs'. apply Hargs' in H0. simpl_set; auto.
     }
     erewrite !val_with_args_in; auto;
     try (unfold sym_sigma_args, ty_subst_list_s; rewrite length_map; auto);
@@ -174,11 +174,12 @@ Proof.
       symmetry. rewrite <- Hargs, map_nth_inbound with (d2:=vs_d); auto.
       apply vt_with_args_cast; auto; [| apply s_params_Nodup].
       intros.
-      pose proof (s_args_wf p) as Hargs'. 
-      apply check_args_prop with (x:=(snd (nth i args vs_d))) in Hargs'; auto.
-      - rewrite asubset_def in Hargs'. apply Hargs' in H0. simpl_set; auto. 
-      - rewrite <- Hargs. rewrite in_map_iff.
+      pose proof (check_args_prop (s_args_WF p) (snd (nth i args vs_d))) as Hargs'.
+      prove_hyp Hargs'.
+      { rewrite <- Hargs. rewrite in_map_iff.
         exists (nth i args vs_d); auto.
+      }
+      rewrite asubset_def in Hargs'. apply Hargs' in H0. simpl_set; auto.
     }
     erewrite !val_with_args_in; auto;
     try (unfold sym_sigma_args, ty_subst_list_s; rewrite length_map; auto);

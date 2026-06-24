@@ -320,4 +320,25 @@ Ltac solve_bool :=
   | |- ?b1 || ?b2 = ?z => destruct b2
   | |- ?z = ?b1 && ?b2 => destruct b2
   | |- ?z = ?b1 || ?b2 => destruct b2
-  end; simpl_bool; try reflexivity).
+   end; simpl_bool; try reflexivity).
+
+(*SProp*)
+
+Inductive sEmpty : SProp := .
+Inductive sUnit : SProp := stt.
+Definition is_trueS (b:bool) : SProp := if b then sUnit else sEmpty.
+
+(*TODO: we can use this to get results I think*)
+Definition sprop_to_bool {b} : is_trueS b -> b
+  := match b with
+     | true => fun _ => eq_refl
+     | false => sEmpty_ind _
+     end.
+
+Definition bool_to_sprop {b} (H: is_true b) : is_trueS b.
+Proof.
+  unfold is_true in H.
+  symmetry in H.
+  destruct H.
+  constructor.
+Defined.

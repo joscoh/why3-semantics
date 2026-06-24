@@ -89,15 +89,16 @@ Definition eval_const (c: constant) : option Syntax.constant :=
 (*Here, we need typing as well*)
 
 Definition mk_funsym_infer (n: string) (args: list vty) (ret: vty) (is_constr: bool) (num_constrs: nat): funsym.
-  refine (Build_funsym (Build_fpsym n (find_args (ret :: args))
-    args (find_args_check_args_l _ _ _) (find_args_nodup _)) ret is_constr num_constrs 
+  refine (mk_funsym (mk_fpsym n (find_args (ret :: args))
+    args (find_args_check_args_l _ _ _) (find_args_nodup _)) 
+            ret is_constr num_constrs 
       (find_args_check_args_in _ _ _)).
   - intros x Hinx. simpl. right; exact Hinx.
   - simpl. left. reflexivity.
 Defined.
 
 Definition mk_predsym_infer (n: string) (args: list vty): predsym.
-  refine (Build_predsym (Build_fpsym n (find_args args)
+  refine (Build_predsym (mk_fpsym n (find_args args)
     args (find_args_check_args_l _ _ _) (find_args_nodup _))).
   intros x Hinx; exact Hinx.
 Defined.

@@ -2297,8 +2297,8 @@ Section Tests.
 (** Utilities for building tests *)
 
 Notation mk_fs name params args ret_ts ret_args num_constrs := 
-  (Build_funsym (Build_fpsym name params args erefl erefl) 
-    (vty_cons ret_ts (map vty_var ret_args)) true num_constrs erefl).
+  (Build_funsym (Build_fpsym name params args stt stt) 
+    (vty_cons ret_ts (map vty_var ret_args)) true num_constrs stt).
 
 Definition triv_vars : typevar -> Set := fun _ => empty.
 Definition triv_syms: typesym -> list vty -> Set := fun _ _ => empty.
@@ -2355,8 +2355,8 @@ Ltac prove_constr :=
   unfold triv_constr, make_constr_simple, make_constr; simpl;
   let He := fresh "Heq" in
   match goal with | |- mkW ?i ?a ?b ?x ?a1 ?f = mkW ?i ?a ?b ?x ?a2 ?f2 =>
-    assert (He: a1 = a2);
-  [unfold eq_rect; rewrite (all_funsym_refl (CommonBool.elimT _ _)); reflexivity|
+                      assert (He: a1 = a2);
+  [reflexivity|
   apply (mkW_eq a b x a1 a2 He); intros; revert_eqs;
   unfold cast, eq_rec_r, eq_rec, eq_rect, eq_idx', eq_ind_r, eq_ind (*eq_rect, eq_ind_r, eq_ind, eq_rec_r), eq_rec*);
   repeat (progress (try rewrite (all_funsym_refl (CommonBool.elimT _ _));

@@ -49,7 +49,8 @@ Ltac contra :=
   solve[let C := fresh in
     intro C; inversion C].
 
-Ltac right_dec := solve[let C := fresh "C" in right; intro C; inversion C; try contradiction].
+Ltac right_dec := solve[let C := fresh "C" in right; intro C; inversion C; subst; contradiction].
+Ltac left_dec := solve[left; subst; reflexivity].
 
 Ltac triv :=
   let inner := split_all; auto; 

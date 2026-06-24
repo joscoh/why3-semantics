@@ -132,8 +132,10 @@ Definition selector_funsym(ts: typesym) (csl: list funsym) : funsym :=
   (*Params: new name + all params in ts*)
   (*args are ty and then bunch of copies of mt_ty, 1 per constructor*)
   let mt_al := ty :: rev_map (fun _ => mt_ty) csl in
-  Build_funsym (Build_fpsym mt_id (mt_var :: nodup string_dec (ts_args ts)) mt_al 
-    (selector_check_args ts csl) (selector_args_nodup ts)) mt_ty false 0 (selector_ret_sublist ts).
+  mk_funsym (mk_fpsym mt_id (mt_var :: nodup string_dec (ts_args ts)) mt_al 
+    (selector_check_args ts csl) 
+    (selector_args_nodup ts)) 
+    mt_ty false 0 (selector_ret_sublist ts).
 
 
 (*The selector axiom for a given typesym and constructor list*)
@@ -237,8 +239,9 @@ Qed.
 Definition indexer_funsym (ts: typesym) : funsym :=
   let ty := vty_cons ts (map vty_var (ts_args ts))in
   let mt_id := gen_id (indexer_name ts) in
-  Build_funsym (Build_fpsym mt_id (nodup typevar_eq_dec (ts_args ts)) [ty] 
-    (indexer_check_args ts) (nodupb_nodup _ _)) vty_int false 0 (check_asubset_empty _).
+  mk_funsym (mk_fpsym mt_id (nodup typevar_eq_dec (ts_args ts)) [ty] 
+    (indexer_check_args ts) 
+    (nodupb_nodup _ _)) vty_int false 0 (check_asubset_empty _).
 
 (*Define indexer axiom*)
 Definition indexer_axiom
@@ -333,20 +336,19 @@ Lemma check_args_ret (c: funsym):
   check_args (s_params c) [f_ret c].
 Proof.
   simpl. rewrite andb_true_r.
-  destruct c; simpl. auto.
+  apply (f_ret_WF c).
 Qed.
 
 Lemma in_args_check_sublist (c: funsym) (ty: vty) (Hty: In ty (s_args c)):
   check_asubset (type_vars ty) (list_to_aset (s_params c)).
 Proof.
-  destruct c; simpl in *. 
-  destruct f_sym; simpl in *.
-  destruct (check_args_correct s_params s_args); [|discriminate].
+  pose proof (s_args_WF c) as Hwf.
+  destruct (check_args_correct (s_params c) (s_args c)); [|discriminate].
   destruct (check_asubset (type_vars ty) _); simpl; auto.
 Qed.
 
 Definition proj_funsym (c: funsym) (n: string) (ty: vty) (Hty: In ty (s_args c)) : funsym :=
-  Build_funsym (Build_fpsym n (s_params c) [f_ret c] (check_args_ret c) (s_params_nodup c)) 
+  mk_funsym (mk_fpsym n (s_params c) [f_ret c] (check_args_ret c) (s_params_nodupb c)) 
     ty false 0 (in_args_check_sublist c ty Hty).
 
 Definition p_str : string := "p".

@@ -1869,9 +1869,8 @@ Proof.
   try solve[simpl_set; auto].
   - apply type_vars_ty_subst in H; auto.
     2: {
-      intros. destruct f; simpl in *.
-      destruct f_sym; simpl in *.
-      assert (A:=f_ret_wf).
+      intros. 
+      assert (A := f_ret_WF f).
       apply check_asubset_prop in A. rewrite asubset_def in A. 
       specialize (A _ H6). simpl_set; auto.
     }

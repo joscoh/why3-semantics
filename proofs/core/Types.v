@@ -11,7 +11,9 @@ Set Bullet Behavior "Strict Subproofs".
 Require countable strings.
 
 (*Type variable (ex: a)*)
-Definition typevar : Set := string. 
+Definition typevar : Set := string.
+
+(*TODO: too many duplicate notions for equality*)
 
 (*TODO: figure this out from Zulip*)
 
@@ -26,14 +28,13 @@ HB.instance Definition _ := hasDecEq.Build string String.eqb_spec.
 HB.instance Definition _ := hasDecEq.Build typevar typevar_eqb_spec.
 
 Definition typevar_eq_dec (t1 t2: typevar):
-  {t1 = t2} + {t1 <> t2} := reflect_dec' (String.eqb_spec t1 t2).
+  {t1 = t2} + {t1 <> t2} := string_dec t1 t2.
 
 (*Type symbol (ex: list a)*)
 Record typesym : Set := mk_ts {
   ts_name : string;
   ts_args : list typevar;
   }.
-
 
 
 Definition bool_eqb (b1 b2: bool) : bool :=
@@ -68,8 +69,13 @@ Qed.
 
 HB.instance Definition _ := hasDecEq.Build typesym typesym_eqb_spec.
 
-Definition typesym_eq_dec (t1 t2: typesym) : {t1 = t2} + {t1 <> t2} :=
-  reflect_dec' (typesym_eqb_spec t1 t2).
+Lemma typesym_eq_dec (t1 t2: typesym) : {t1 = t2} + {t1 <> t2}.
+Proof.
+  destruct t1 as [n1 l1]. destruct t2 as [n2 l2].
+  destruct (string_dec n1 n2); [|right_dec].
+  destruct (list_eq_dec string_dec l1 l2); [|right_dec].
+  left_dec.
+Defined.
 
 (*Countable*)
 
@@ -201,8 +207,20 @@ Qed.
 
 HB.instance Definition _ := hasDecEq.Build vty vty_eq_spec.
 
-Definition vty_eq_dec (v1 v2: vty): {v1 = v2} + {v1 <> v2} :=
-  reflect_dec' (vty_eq_spec v1 v2).
+Lemma vty_eq_dec (v1 v2: vty) : {v1 = v2} + {v1 <> v2}.
+Proof.
+  revert v2.
+  induction v1 using vty_rect; intros [| | x2| ts2 tys2]; auto.
+  - destruct (string_dec v x2); [left_dec|right_dec].
+  - destruct (typesym_eq_dec tsym ts2); [|right_dec].
+    assert (Hl: {vs = tys2} + {vs <> tys2}).
+  {
+    revert tys2. induction vs as [| s1 t1 IHs]; intros [|s2 t2]; auto.
+    destruct (ForallT_hd _ _ _ H s2); [| right_dec].
+    destruct (IHs (ForallT_tl _ _ _ H) t2); [left_dec| right_dec].
+  }
+  destruct Hl; [left_dec | right_dec].
+Defined.
 
 (*Countable*)
 
@@ -314,8 +332,20 @@ Proof.
   destruct IHs; [subst; apply ReflectT; reflexivity | apply ReflectF; intro C; inversion C; contradiction].
 Qed.
 
-Definition sort_eq_dec s1 s2 := reflect_dec' (sort_eqb_spec s1 s2).
-
+Lemma sort_eq_dec (s1 s2: sort) : {s1 = s2} + {s1 <> s2}.
+Proof.
+  revert s2.
+  induction s1 using sort_rect;
+    intros [| | ts1 srts1 ]; auto.
+  destruct (typesym_eq_dec ts ts1); [|right_dec].
+  assert (Hsrts: {srts = srts1} + {srts <> srts1}).
+  {
+    revert srts1. induction srts as [| s1 t1 IHs]; intros [|s2 t2]; auto.
+    destruct (ForallT_hd _ _ _ IH s2); [| right_dec].
+    destruct (IHs (ForallT_tl _ _ _ IH) t2); [left_dec| right_dec].
+  }
+  destruct Hsrts; [left_dec|right_dec].
+Defined.
 
 (*Bijection between types with no typevars and sorts*)
 

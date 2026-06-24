@@ -124,7 +124,7 @@ Proof.
     * rewrite map_nth_inbound with (d2:=vty_int); auto.
       symmetry.
       apply ty_subst_equiv.
-      pose proof (s_args_wf f).
+      pose proof (s_args_WF f).
       apply check_args_prop with(x:=nth i (s_args f) vty_int) in H0;
       auto. apply nth_In; auto.
 Qed.
@@ -340,7 +340,7 @@ Proof.
     apply map_ext_in. intros.
     rewrite <- funsym_subst_eq; auto.
     rewrite ty_subst_equiv; auto.
-    pose proof (s_args_wf c).
+    pose proof (s_args_WF c).
     apply check_args_prop with (x:=a0) in H2; auto.
     apply s_params_Nodup.
     rewrite (adt_constr_params gamma_valid m_in a_in c_in).
@@ -455,7 +455,7 @@ Proof.
         apply (constr_args_valid gamma_valid m_in a_in c_in).
         apply nth_In; auto.
       - symmetry. apply ty_subst_equiv.
-        pose proof (s_args_wf c).
+        pose proof (s_args_WF c).
         apply check_args_prop with(x:=nth i (s_args c) vty_int) in H;
         auto. apply nth_In; auto.
     }
@@ -530,7 +530,7 @@ Proof.
          rewrite <- Hlen, length_map; auto.
       rewrite ty_subst_equiv.
       2: {
-        pose proof (s_args_wf c).
+        pose proof (s_args_WF c).
         apply check_args_prop with (x:=nth i (s_args c) vty_int) in H;
         auto. apply nth_In; auto.
       }

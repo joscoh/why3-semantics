@@ -1544,14 +1544,14 @@ Lemma ForallT_hd {A: Type} (P: A -> Type) (x: A) (l: list A):
   P x.
 Proof.
   intros. inversion X; subst. apply X0.
-Qed.
+Defined.
 
 Lemma ForallT_tl {A: Type} (P: A -> Type) (x: A) (l: list A):
   ForallT P (x :: l) ->
   ForallT P l.
 Proof.
   intros. inversion X; auto.
-Qed.
+Defined.
 
 Lemma ForallT_In {A: Type} (P: A -> Type)
   (eq_dec: forall (x y: A), {x = y} + {x <> y}) (l: list A):
