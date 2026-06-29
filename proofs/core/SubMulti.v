@@ -89,7 +89,7 @@ Definition map_arg_list {gamma: context} (gamma_valid: valid_context gamma)
 (tms: list term) (tys: list vty)
 (Hlen: length tms = length tys)
 (Htys: Forall (fun x => term_has_type gamma (fst x) (snd x)) (combine tms tys)):
-arg_list (domain (dom_aux pd)) (map (v_subst vt) tys) :=
+arg_list (dom_aux pd) (map (v_subst vt) tys) :=
  (terms_to_hlist gamma_valid pd pf vt vv tms tys (map_arg_list_forall Hlen Htys)).
 
 Lemma map_arg_list_nth_eq (vt: val_typevar) (tys: list vty) (i: nat)

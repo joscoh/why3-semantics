@@ -81,11 +81,11 @@ Definition funs_with_constrs{gamma: context}
   (gamma_valid: valid_context gamma) (pd: pi_dom) 
   (pdf: pi_dom_full gamma pd)
   (funs: forall (f: funsym) (srts: list sort)
-  (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts)):
+  (arg: arg_list (dom_aux pd) (sym_sigma_args f srts)),
+  dom_aux pd (funsym_sigma_ret f srts)):
   forall (f: funsym) (srts: list sort)
-  (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts) :=
+  (arg: arg_list (dom_aux pd) (sym_sigma_args f srts)),
+  dom_aux pd (funsym_sigma_ret f srts) :=
   fun f srts arg =>
   match constr_in_mut_dec gamma f with
   | Left adt_dat =>
@@ -97,7 +97,7 @@ Definition funs_with_constrs{gamma: context}
      match (Nat.eq_dec (length srts) (length (m_params m))) with
      | left srts_len =>
        constr_rep_dom gamma_valid m m_in srts srts_len
-         (dom_aux pd) a a_in f f_in (adts gamma pd pdf m srts) arg
+         (dom_aux pd) (dom_aux_int pd) (dom_aux_real pd) a a_in f f_in (adts gamma pd pdf m srts) arg
      | right _ => funs f srts arg
      end
   | Right f_notin => funs f srts arg
@@ -112,19 +112,19 @@ Lemma funs_with_constrs_constrs {gamma: context}
   (gamma_valid: valid_context gamma) (pd: pi_dom) 
   (pdf: pi_dom_full gamma pd) 
   (funs: forall (f: funsym) (srts: list sort)
-    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-    domain (dom_aux pd) (funsym_sigma_ret f srts)):
+    (arg: arg_list (dom_aux pd) (sym_sigma_args f srts)),
+    dom_aux pd (funsym_sigma_ret f srts)):
   forall (m : mut_adt) (a : alg_datatype) 
   (c : funsym) (Hm : mut_in_ctx m gamma) 
   (Ha : adt_in_mut a m) (Hc : constr_in_adt c a)
   (srts : list sort)
   (Hlens : Datatypes.length srts =
             Datatypes.length (m_params m))
-  (args : arg_list (domain (dom_aux pd))
+  (args : arg_list (dom_aux pd)
             (sym_sigma_args c srts)),
   (funs_with_constrs gamma_valid pd pdf funs) c srts args =
   constr_rep_dom gamma_valid m Hm srts Hlens 
-  (dom_aux pd) a Ha c Hc (adts gamma pd pdf m srts) args.
+  (dom_aux pd) (dom_aux_int pd) (dom_aux_real pd) a Ha c Hc (adts gamma pd pdf m srts) args.
 Proof.
   intros.
   unfold funs_with_constrs.
@@ -153,8 +153,8 @@ Lemma funs_with_constrs_notin {gamma: context}
   (gamma_valid: valid_context gamma) (pd: pi_dom) 
   (pdf: pi_dom_full gamma pd)
     (funs: forall (f: funsym) (srts: list sort)
-    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-  domain (dom_aux pd) (funsym_sigma_ret f srts)):
+    (arg: arg_list (dom_aux pd) (sym_sigma_args f srts)),
+  dom_aux pd (funsym_sigma_ret f srts)):
   forall (f: funsym) srts arg,
     (forall (m: mut_adt) (a: alg_datatype),
       mut_in_ctx m gamma ->
@@ -175,10 +175,10 @@ Definition mk_pi_funpred {gamma: context}
   (gamma_valid: valid_context gamma) (pd: pi_dom)
   (pdf: pi_dom_full gamma pd)
   (funs: forall (f: funsym) (srts: list sort)
-    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)),
-    domain (dom_aux pd) (funsym_sigma_ret f srts))
+    (arg: arg_list (dom_aux pd) (sym_sigma_args f srts)),
+    dom_aux pd (funsym_sigma_ret f srts))
   (preds: forall (p: predsym) (srts: list sort)
-    (arg: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)),
+    (arg: arg_list (dom_aux pd) (sym_sigma_args p srts)),
     bool):
   pi_funpred gamma_valid pd :=
   Build_pi_funpred gamma_valid pd (funs_with_constrs gamma_valid pd pdf funs)
@@ -253,7 +253,7 @@ Lemma upd_pf_multi_nonrecfun (l: list def) (pf: pi_funpred gamma_valid pd)
 (f: funsym) (args: list vsymbol) (body: term)
 (f_in: In (nonrec_def (fun_def f args body)) l)
 (srts: list sort) (srts_len: length srts = length (s_params f))
-(a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+(a: arg_list (dom_aux pd) (sym_sigma_args f srts))
 (vt: val_typevar)
 (vv: val_vars pd vt):
 funs gamma_valid pd (upd_pf_multi l pf Hallin) f srts a =
@@ -355,7 +355,7 @@ fs (fs_in: In (recursive_def fs) l)
 (f: funsym) (args: list vsymbol) (body: term)
 (f_in: In (fun_def f args body) fs)
 (srts: list sort) (srts_len: length srts = length (s_params f))
-(a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+(a: arg_list (dom_aux pd) (sym_sigma_args f srts))
 (vt: val_typevar)
 (vv: val_vars pd vt):
 funs gamma_valid pd (upd_pf_multi l pf Hallin) f srts a =
@@ -481,7 +481,7 @@ Lemma upd_pf_multi_nonrecpred (l: list def) (pf: pi_funpred gamma_valid pd)
 (p: predsym) (args: list vsymbol) (body: formula)
 (p_in: In (nonrec_def (pred_def p args body)) l)
 (srts: list sort) (srts_len: length srts = length (s_params p))
-(a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+(a: arg_list (dom_aux pd) (sym_sigma_args p srts))
 (vt: val_typevar)
 (vv: val_vars pd vt):
 preds gamma_valid pd (upd_pf_multi l pf Hallin) p srts a =
@@ -579,7 +579,7 @@ fs (fs_in: In (recursive_def fs) l)
 (p: predsym) (args: list vsymbol) (body: formula)
 (p_in: In (pred_def p args body) fs)
 (srts: list sort) (srts_len: length srts = length (s_params p))
-(a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+(a: arg_list (dom_aux pd) (sym_sigma_args p srts))
 (vt: val_typevar)
 (vv: val_vars pd vt):
 preds gamma_valid pd (upd_pf_multi l pf Hallin) p srts a =
@@ -777,7 +777,7 @@ Lemma upd_pf_multi_indprop (l: list def) (pf: pi_funpred gamma_valid pd)
   (p_in: pred_in_indpred p ps)
   (srts: list sort)
   (srts_len: length srts = length (s_params p))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts)):
+  (a: arg_list (dom_aux pd) (sym_sigma_args p srts)):
   preds gamma_valid pd (upd_pf_multi l pf Hallin) p srts a =
   indpred_rep_full gamma_valid pd (upd_pf_multi l pf Hallin)
     ps (indpreds_of_sub Hallin ps_in) p p_in srts a.
@@ -902,7 +902,7 @@ Lemma full_interp_recfun {gamma} (gamma_valid: valid_context gamma)
   (f: funsym) (args: list vsymbol) (body: term)
   (f_in: In (fun_def f args body) fs)
   (srts: list sort) (srts_len: length srts = length (s_params f))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+  (a: arg_list (dom_aux pd) (sym_sigma_args f srts))
   (vt: val_typevar)
   (vv: val_vars pd vt),
   funs gamma_valid pd pf f srts a =
@@ -933,7 +933,7 @@ Lemma full_interp_recpred {gamma} (gamma_valid: valid_context gamma)
   (p: predsym) (args: list vsymbol) (body: formula)
   (p_in: In (pred_def p args body) fs)
   (srts: list sort) (srts_len: length srts = length (s_params p))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+  (a: arg_list (dom_aux pd) (sym_sigma_args p srts))
   (vt: val_typevar)
   (vv: val_vars pd vt),
   preds gamma_valid pd pf p srts a =

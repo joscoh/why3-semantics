@@ -18,7 +18,7 @@ Variable (v: val_vars pd vt).
 
 Equations terms_to_hlist (ts: list term) (tys: list vty)
   (Hty: Forall2 (fun t ty => term_has_type gamma t ty) ts tys) :
-  arg_list (domain (dom_aux pd)) (map (v_subst vt) tys) :=
+  arg_list (dom_aux pd) (map (v_subst vt) tys) :=
 terms_to_hlist nil nil Hty := HL_nil _;
 terms_to_hlist (t :: ts) (ty :: tys) Hty :=
   HL_cons _ _ _ (term_rep gamma_valid pd pf vt v t ty (Forall2_inv_head Hty)) 
@@ -211,7 +211,7 @@ Section Iter.
 
 Context {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom).
 
-Notation domain := (domain (dom_aux pd)).
+Notation domain := (dom_aux pd).
 Notation term_rep := (term_rep gamma_valid pd).
 Notation formula_rep := (formula_rep gamma_valid pd).
 

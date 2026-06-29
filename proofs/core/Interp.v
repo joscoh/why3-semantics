@@ -24,10 +24,9 @@ Variable (gamma: context).
   will change without affecting domains or valuations*)
 Record pi_dom : Type :=
   {dom_aux: sort -> Set;
-  (*the prelimiary domain function: the full
-    function is (domain dom_aux), which enforces that domain s_int reduces
-    to Z and domain s_real reduces to R*)
-  domain_ne: forall s, domain_nonempty (domain dom_aux) s;
+   dom_aux_int : dom_int_wf dom_aux;
+   dom_aux_real : dom_real_wf dom_aux;
+   domain_ne: forall s, domain_nonempty dom_aux s;
   }.
 
 End PD.
@@ -38,19 +37,26 @@ Record pi_funpred (pd: pi_dom) := {
     the ith argument has the correct type.*)
 
   funs: forall (f:funsym) (srts: list sort),
-    arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
-    (domain (dom_aux pd) (funsym_sigma_ret f srts));
+    arg_list (dom_aux pd) (sym_sigma_args f srts) ->
+    dom_aux pd (funsym_sigma_ret f srts);
 
   preds: forall (p:predsym) (srts: list sort),
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool;
+    arg_list (dom_aux pd) (sym_sigma_args p srts) -> bool;
 
   (*The interpretation must satisfy the ADT properties*)
-  adt_props: adt_interp_props gamma_valid (dom_aux pd) funs
+  adt_props: adt_interp_props gamma_valid (dom_aux pd) (dom_aux_int pd) funs
 
   }.
 
 (*Useful for defaults*)
-Definition dom_int (pd: pi_dom) : domain (dom_aux pd) s_int := dom_int_aux (dom_aux pd).
+Definition dom_int (pd: pi_dom) : dom_aux pd s_int := dom_int_aux (dom_aux_int pd).
+
+(*Ints and reals*)
+Definition int_to_dom (pd: pi_dom) (z: Z) : dom_aux pd s_int := scast (eq_sym (dom_aux_int pd)) z.
+Definition real_to_dom (pd: pi_dom) (r: R) : dom_aux pd s_real := scast (eq_sym (dom_aux_real pd)) r.
+Definition dom_to_int (pd: pi_dom) (x: dom_aux pd s_int) : Z := scast (dom_aux_int pd) x.
+Definition dom_to_real (pd: pi_dom) (x: dom_aux pd s_real) : R := scast (dom_aux_real pd) x.
+(*TODO: inv?*)
 
 (*Valuations*)
 (*A valuation maps type variables to sorts*)
@@ -59,7 +65,7 @@ Definition val_typevar := typevar -> sort.
 (*And variables to elements of their domain (according to the
   typevar valuation)*)
 Definition val_vars (pd: pi_dom) (vt: val_typevar) : Type :=
-  forall (x: vsymbol), domain (dom_aux pd) (v_subst vt (snd x)).
+  forall (x: vsymbol), dom_aux pd (v_subst vt (snd x)).
 
 (*Valuation utilities*)
 Section ValUtil.
@@ -67,7 +73,7 @@ Section ValUtil.
 Variable pd: pi_dom.
 Variable vt: val_typevar.
 
-Notation domain := (domain (dom_aux pd)).
+Notation domain := (dom_aux pd).
 Notation val t  := (domain (v_subst vt t)).
 
 Definition var_to_dom (vv: val_vars pd vt) (x: vsymbol): val (snd x) :=
@@ -545,10 +551,10 @@ dom_cast (dom_aux pd)
     nodup_params pd vt vv x).
 
 (*Reverse [val_with_args] is equivalent*)
-Lemma val_with_args_rev {vt pd} v vars {srts} (al: arg_list (domain (dom_aux pd)) srts):
+Lemma val_with_args_rev {vt pd} v vars {srts} (al: arg_list (dom_aux pd) srts):
   NoDup vars ->
   map (v_subst vt) (map snd vars) = srts -> 
-  forall x, val_with_args pd vt v (rev vars) (hlist_rev (domain (dom_aux pd)) _ al) x =
+  forall x, val_with_args pd vt v (rev vars) (hlist_rev (dom_aux pd) _ al) x =
     val_with_args pd vt v vars al x.
 Proof.
   rewrite map_map. intros Hnodup Hsrts x; subst.
@@ -597,14 +603,14 @@ Definition adt_rep (pd: pi_dom) (a: alg_datatype) (srts: list sort) := ADTSpec.a
 Definition constr_rep {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   {m a c srts} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
   (srts_len: length srts = length (m_params m))
-  (args: arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args c srts)) :
+  (args: arg_list (dom_aux pd) (sym_sigma_args c srts)) :
   adt_rep pd a srts :=
   ADTSpec.constr_rep gamma_valid (dom_aux pd) (funs gamma_valid pd pf) m_in a_in c_in srts_len args.
 
 Lemma constrs_eq {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
     {m a c srts} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
     (srts_len: length srts = length (m_params m))
-    (args: arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args c srts)):
+    (args: arg_list (dom_aux pd) (sym_sigma_args c srts)):
     funs gamma_valid pd pf c srts args =
       dom_cast (dom_aux pd) (adt_typesym_funsym gamma_valid m_in a_in c_in srts_len)
         (constr_rep gamma_valid pd pf m_in a_in c_in srts_len args).
@@ -614,25 +620,25 @@ Qed.
 
 Lemma constrs_inj {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   {m a c srts} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
-  (srts_len: length srts = length (m_params m)) (a1 a2: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)):
+  (srts_len: length srts = length (m_params m)) (a1 a2: arg_list (dom_aux pd) (sym_sigma_args c srts)):
   constr_rep gamma_valid pd pf m_in a_in c_in srts_len a1 =
   constr_rep gamma_valid pd pf m_in a_in c_in srts_len a2 ->
   a1 = a2.
 Proof.
-  apply ADTSpec.constrs_inj, (adt_props gamma_valid pd pf).
+  apply ADTSpec.constrs_inj with (pd_int:=dom_aux_int pd), (adt_props gamma_valid pd pf).
 Qed.
 
 Lemma constrs_disj {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
   {m a f1 f2 srts} (m_in : mut_in_ctx m gamma) (a_in : adt_in_mut a m)
   (f1_in : constr_in_adt f1 a) (f2_in : constr_in_adt f2 a)
   (srts_len : length srts = length (m_params m))
-  (a1 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f1 srts))
-  (a2 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f2 srts)):
+  (a1 : arg_list (dom_aux pd) (sym_sigma_args f1 srts))
+  (a2 : arg_list (dom_aux pd) (sym_sigma_args f2 srts)):
   f1 <> f2 ->
   constr_rep gamma_valid pd pf m_in a_in f1_in srts_len a1 <>
   constr_rep gamma_valid pd pf m_in a_in f2_in srts_len a2.
 Proof.
-  apply ADTSpec.constrs_disj, (adt_props gamma_valid pd pf).
+  apply ADTSpec.constrs_disj with (pd_int:=dom_aux_int pd), (adt_props gamma_valid pd pf).
 Qed.
 
 Lemma find_constr_rep {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
@@ -640,10 +646,10 @@ Lemma find_constr_rep {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (p
    (srts_len : length srts = length (m_params m))
    (x : adt_rep pd a srts):
    {f : funsym &
-     {Hf : constr_in_adt f a * arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f srts)
+     {Hf : constr_in_adt f a * arg_list (dom_aux pd) (sym_sigma_args f srts)
      | x = constr_rep gamma_valid pd pf m_in a_in (fst Hf) srts_len (snd Hf)}}.
 Proof.
-  apply ADTSpec.find_constr_rep, (adt_props gamma_valid pd pf).
+  apply ADTSpec.find_constr_rep with (pd_int:=dom_aux_int pd), (adt_props gamma_valid pd pf).
 Qed.
 
 Lemma adt_ind {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
@@ -651,7 +657,7 @@ Lemma adt_ind {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) (pf: pi_fu
   (P: forall t, adt_in_mut t m -> adt_rep pd t srts -> Prop):
   (forall (t : alg_datatype) (t_in : adt_in_mut t m) (x : adt_rep pd t srts) 
           (c : funsym) (c_in : constr_in_adt c t)
-          (a : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args c srts)),
+          (a : arg_list (dom_aux pd) (sym_sigma_args c srts)),
           x = constr_rep gamma_valid pd pf m_in t_in c_in srts_len a ->
           (forall (i : nat) (t' : alg_datatype) (t_in' : adt_in_mut t' m)
                (Heq : nth i (sym_sigma_args c srts) s_int = s_cons (adt_name t') srts),
@@ -668,8 +674,8 @@ Lemma constrs_inj_strong {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom)
   {m a f1 f2 srts} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (f1_in : constr_in_adt f1 a) (f2_in : constr_in_adt f2 a)
   (srts_len : length srts = length (m_params m))
-  (a1 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f1 srts))
-  (a2 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f2 srts)):
+  (a1 : arg_list (dom_aux pd) (sym_sigma_args f1 srts))
+  (a2 : arg_list (dom_aux pd) (sym_sigma_args f2 srts)):
   constr_rep gamma_valid pd pf m_in a_in f1_in srts_len a1 =
   constr_rep gamma_valid pd pf m_in a_in f2_in srts_len a2 ->
   exists (Heq: f1 = f2), a2 = cast_arg_list (f_equal (fun (x: funsym) => sym_sigma_args x srts) Heq) a1.
@@ -701,8 +707,8 @@ Lemma constrs_inj_strong' {g1 g2} (g1_valid: valid_context g1) (g2_valid: valid_
   {m a f1 f2 srts} (m_in1: mut_in_ctx m g1) (m_in2: mut_in_ctx m g2) (a_in: adt_in_mut a m)
   (f1_in : constr_in_adt f1 a) (f2_in : constr_in_adt f2 a)
   (srts_len : length srts = length (m_params m))
-  (a1 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f1 srts))
-  (a2 : arg_list (Domain.domain (dom_aux pd)) (sym_sigma_args f2 srts)):
+  (a1 : arg_list (dom_aux pd) (sym_sigma_args f1 srts))
+  (a2 : arg_list (dom_aux pd) (sym_sigma_args f2 srts)):
   constr_rep g1_valid pd pf1 m_in1 a_in f1_in srts_len a1 =
   constr_rep g2_valid pd pf2 m_in2 a_in f2_in srts_len a2 ->
   exists (Heq: f1 = f2), a2 = cast_arg_list (f_equal (fun (x: funsym) => sym_sigma_args x srts) Heq) a1.
@@ -715,8 +721,8 @@ Lemma constrs_inj_iff_strong {gamma} (gamma_valid: valid_context gamma) {m a c1 
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c1_in: constr_in_adt c1 a)
   (c2_in: constr_in_adt c2 a) {srts} (srts_len: length srts = length (m_params m))
   (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-  (a1: arg_list (domain (dom_aux pd)) (sym_sigma_args c1 srts))
-  (a2: arg_list (domain (dom_aux pd)) (sym_sigma_args c2 srts)):
+  (a1: arg_list (dom_aux pd) (sym_sigma_args c1 srts))
+  (a2: arg_list (dom_aux pd) (sym_sigma_args c2 srts)):
     constr_rep gamma_valid pd pf m_in a_in c1_in srts_len a1 =
     constr_rep gamma_valid pd pf m_in a_in c2_in srts_len a2 <->
     exists (Heq: c1 = c2), a2 = cast_arg_list (f_equal (fun (c: funsym) => sym_sigma_args c srts) Heq) a1.
@@ -730,19 +736,19 @@ Qed.
 Definition mk_pf_from_existing_aux {g1 g2} (g1_valid: valid_context g1) (g2_valid: valid_context g2)
   (Hmut: forall m, mut_in_ctx m g2 -> mut_in_ctx m g1)
   (pd: pi_dom) (pf: pi_funpred g1_valid pd)
-  (funs2: forall (f: funsym) srts, arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
-                        domain (dom_aux pd) (funsym_sigma_ret f srts))
-  (preds2: forall (p: predsym) srts, arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool)
+  (funs2: forall (f: funsym) srts, arg_list (dom_aux pd) (sym_sigma_args f srts) ->
+                        dom_aux pd (funsym_sigma_ret f srts))
+  (preds2: forall (p: predsym) srts, arg_list (dom_aux pd) (sym_sigma_args p srts) -> bool)
   (constrs: ADTSpec.pf_same_constrs g1_valid g2_valid (funs g1_valid pd pf) funs2):
   pi_funpred g2_valid pd :=
   Build_pi_funpred g2_valid pd funs2 preds2 (pf_same_constrs_adt_props g1_valid g2_valid
-                                                  Hmut constrs (adt_props g1_valid pd pf)).
+                                                  Hmut (dom_aux_int pd) constrs (adt_props g1_valid pd pf)).
 
 Definition mk_pf_from_existing {gamma} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-  (funs2: forall (f: funsym) srts, arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
-                        domain (dom_aux pd) (funsym_sigma_ret f srts))
-  (preds2: forall (p: predsym) srts, arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool)
+  (funs2: forall (f: funsym) srts, arg_list (dom_aux pd) (sym_sigma_args f srts) ->
+                        dom_aux pd (funsym_sigma_ret f srts))
+  (preds2: forall (p: predsym) srts, arg_list (dom_aux pd) (sym_sigma_args p srts) -> bool)
   (constrs: ADTSpec.pf_same_constrs gamma_valid gamma_valid (funs gamma_valid pd pf) funs2):
   pi_funpred gamma_valid pd :=
   mk_pf_from_existing_aux gamma_valid gamma_valid (ltac:(auto)) pd pf funs2 preds2 constrs.

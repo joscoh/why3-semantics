@@ -2,16 +2,16 @@ Require Import ADTSpec ADTInd.
 
 Lemma pd_full_props {gamma} (gamma_valid: valid_context gamma) 
   (pd: pi_dom) (pdf: pi_dom_full gamma pd)
-  (funs: forall (f: funsym) (srts: list sort), arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
-                                          domain (dom_aux pd) (funsym_sigma_ret f srts))
+  (funs: forall (f: funsym) (srts: list sort), arg_list (dom_aux pd) (sym_sigma_args f srts) ->
+                                          dom_aux pd (funsym_sigma_ret f srts))
   (constrs: forall (m: mut_adt) (a: alg_datatype) (c: funsym)
     (Hm: mut_in_ctx m gamma) (Ha: adt_in_mut a m) (Hc: constr_in_adt c a)
     (srts: list sort) (Hlens: length srts = length (m_params m))
-    (args: arg_list (domain (dom_aux pd)) (sym_sigma_args c srts)),
+    (args: arg_list (dom_aux pd) (sym_sigma_args c srts)),
     funs c srts args =
-    constr_rep_dom gamma_valid m Hm srts Hlens (dom_aux pd) a Ha
+    constr_rep_dom gamma_valid m Hm srts Hlens (dom_aux pd) (dom_aux_int pd) (dom_aux_real pd) a Ha
       c Hc (adts gamma pd pdf m srts) args):
-  adt_interp_props gamma_valid (dom_aux pd) funs.
+  adt_interp_props gamma_valid (dom_aux pd) (dom_aux_int pd) funs.
 Proof.
   constructor.
   - (*injective*)
@@ -37,7 +37,8 @@ Proof.
     intros m a m_in a_in srts srts_len x.
     unfold ADTSpec.adt_rep in x.
     set (x' := scast (adts gamma pd pdf m srts a m_in a_in srts_len) x).
-    destruct (IndTypes.find_constr_rep gamma_valid m m_in srts srts_len (dom_aux pd) a a_in (adts gamma pd pdf m srts) 
+    destruct (IndTypes.find_constr_rep gamma_valid m m_in srts srts_len (dom_aux pd) (dom_aux_int pd) 
+                (dom_aux_real pd) a a_in (adts gamma pd pdf m srts) 
       (gamma_all_unif gamma_valid _ m_in) x') as [f [[Hf args] Hx']].
     apply (existT f).
     apply (exist _ (Hf, args)).

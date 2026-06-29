@@ -835,13 +835,13 @@ Definition forallI_trans name : trans :=
 Section InterpWithConst.
 
 Definition funs_with_const {pd} (funs: forall (f : funsym) (srts : list sort),
-arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
-  domain (dom_aux pd) (funsym_sigma_ret f srts))
+arg_list (dom_aux pd) (sym_sigma_args f srts) ->
+  dom_aux pd (funsym_sigma_ret f srts))
 (name: string) (s: sort)
-(d: domain (dom_aux pd) s):
+(d: dom_aux pd s):
 forall (f : funsym) (srts : list sort),
-	       arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
-           domain (dom_aux pd) (funsym_sigma_ret f srts).
+	       arg_list (dom_aux pd) (sym_sigma_args f srts) ->
+           dom_aux pd (funsym_sigma_ret f srts).
 Proof.
 refine (fun f =>
   match (funsym_eq_dec f (const_noconstr name s)) with
@@ -858,10 +858,10 @@ exact (dom_cast _ (eq_sym H) d).
 Defined.
 
 Lemma funs_with_const_same {pd} (funs: forall (f : funsym) (srts : list sort),
-arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
-  domain (dom_aux pd) (funsym_sigma_ret f srts))
+arg_list (dom_aux pd) (sym_sigma_args f srts) ->
+  dom_aux pd (funsym_sigma_ret f srts))
 (name: string) (s: sort)
-(d: domain (dom_aux pd) s)
+(d: dom_aux pd s)
 srts a Heq:
 funs_with_const funs name s d (const_noconstr name s) srts a = dom_cast _ Heq d.
 Proof.
@@ -871,10 +871,10 @@ Proof.
 Qed.
 
 Lemma funs_with_const_diff {pd} (funs: forall (f : funsym) (srts : list sort),
-arg_list (domain (dom_aux pd)) (sym_sigma_args f srts) ->
-  domain (dom_aux pd) (funsym_sigma_ret f srts))
+arg_list (dom_aux pd) (sym_sigma_args f srts) ->
+  dom_aux pd (funsym_sigma_ret f srts))
 (name: string) (s: sort)
-(d: domain (dom_aux pd) s)
+(d: dom_aux pd s)
 (f: funsym) srts a:
 f <> const_noconstr name s ->
 funs_with_const funs name s d f srts a = funs f srts a.
@@ -897,7 +897,7 @@ Lemma funs_with_const_constrs {gamma: context}
 (name: string) (s: sort)
 (gamma_valid': valid_context (abs_fun (const_noconstr name s) :: gamma))
 (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-(d: domain (dom_aux pd) s):
+(d: dom_aux pd s):
   ADTSpec.pf_same_constrs gamma_valid gamma_valid' (funs gamma_valid pd pf)
     (funs_with_const (funs gamma_valid pd pf) name s d).
 Proof.
@@ -927,7 +927,7 @@ Definition pf_with_const {gamma: context}
 (name: string) (s: sort)
 (gamma_valid': valid_context (abs_fun (const_noconstr name s) :: gamma))
 (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
-(d: domain (dom_aux pd) s):
+(d: dom_aux pd s):
 pi_funpred gamma_valid' pd  :=
   mk_pf_from_existing_aux gamma_valid gamma_valid' (funs_with_constr_mut gamma name s) pd pf
   _ (preds gamma_valid pd pf) (funs_with_const_constrs gamma_valid name s gamma_valid' pd pf d).
@@ -941,7 +941,7 @@ Lemma interp_with_const_full {gamma: context}
 (gamma_valid': valid_context (abs_fun (const_noconstr name s) :: gamma))
 (pd: pi_dom) (pf: pi_funpred gamma_valid pd)
 (pf_full: full_interp gamma_valid pd pf)
-(d: domain (dom_aux pd) s):
+(d: dom_aux pd s):
 full_interp gamma_valid' pd (pf_with_const gamma_valid name s gamma_valid' pd pf d).
 Proof.
   assert (pf_eq :  pf_same_constrs pf (pf_with_const gamma_valid name s gamma_valid' pd pf d)).

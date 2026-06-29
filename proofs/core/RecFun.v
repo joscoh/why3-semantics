@@ -107,7 +107,7 @@ Qed.
 Variable fs_not_constr : forall (f: funsym), In f (map fn_sym fs) ->
   forall m a, mut_in_ctx m gamma -> adt_in_mut a m -> ~ constr_in_adt f a. 
 
-Notation domain := (domain (dom_aux pd)).
+Notation domain := (dom_aux pd).
 
 Section Smaller.
 
@@ -2732,12 +2732,12 @@ bool)
   let Htyeq : vty_int = ty :=
     eq_sym (ty_constint_inv Hty') in
 
-  exist _ (cast_dom_vty pd Htyeq z) (const_ret_case Hty')
+  exist _ (cast_dom_vty pd Htyeq (int_to_dom pd z)) (const_ret_case Hty')
 | Tconst (ConstReal r) => fun Hty' _ =>
   let Htyeq : vty_real = ty :=
     eq_sym (ty_constreal_inv Hty') in
 
-  exist _ (cast_dom_vty pd Htyeq (Q2R r)) (const_ret_case Hty') 
+  exist _ (cast_dom_vty pd Htyeq (real_to_dom pd (Q2R r))) (const_ret_case Hty') 
 | Tvar x => fun Hty' _ =>
   let Heq : ty = snd x := ty_var_inv Hty' in
   (exist _ 

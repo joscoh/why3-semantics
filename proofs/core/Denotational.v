@@ -73,7 +73,7 @@ Context {gamma: context} (gamma_valid: valid_context gamma)
 
 (*Representation of terms, formulas, patterns*)
 
-Notation domain := (domain (dom_aux pd)).
+Notation domain := (dom_aux pd).
 Notation val x :=  (v_subst x).
 (*Notation val_typevar := (@val_typevar sigma).*)
 Notation substi := (substi pd).
@@ -606,7 +606,7 @@ Fixpoint match_val_single (v: val_typevar) (ty: vty)
 
       (*The key part: get the constructor c and arg_list a
           such that d = [[c(a)]]*)
-      let Hrep := ADTSpec.find_constr_rep gamma_valid _ _
+      let Hrep := ADTSpec.find_constr_rep gamma_valid _ _ _
                     (adt_props gamma_valid _ pf) m_in a_in srts_len adt in
 
       (*The different parts of Hrep we need*)
@@ -781,7 +781,7 @@ Lemma match_val_single_rewrite  (v: val_typevar) (ty: vty)
           (adt_vty_length_eq gamma gamma_valid Hisadt 
           (pat_has_type_valid _ _ _ Hty')) in
 
-      let Hrep := ADTSpec.find_constr_rep gamma_valid _ _ (adt_props gamma_valid _ pf) m_in a_in srts_len adt in
+      let Hrep := ADTSpec.find_constr_rep gamma_valid _ _ _ (adt_props gamma_valid _ pf) m_in a_in srts_len adt in
 
       let c : funsym := projT1 Hrep in
       let c_in : constr_in_adt c a :=
@@ -883,7 +883,7 @@ Lemma match_val_single_ind
   (Hinmut: adt_in_mut adt m)
   (Hinctx: mut_in_ctx m gamma)
   (Hvslen2: Datatypes.length vs2 = Datatypes.length (m_params m)),
-  projT1 (ADTSpec.find_constr_rep gamma_valid _ _ (adt_props gamma_valid _ pf) Hinctx Hinmut
+  projT1 (ADTSpec.find_constr_rep gamma_valid _ _ _ (adt_props gamma_valid _ pf) Hinctx Hinmut
     (eq_trans (length_map (val v) vs2) (Hvslen2))
         (dom_cast (dom_aux pd)
           (eq_trans (f_equal (val v) Htyeq) 
@@ -1299,12 +1299,12 @@ Equations term_rep (v: val_vars pd vt) (t: term) (ty: vty)
 term_rep v (Tconst (ConstInt z)) ty Hty :=
   let Htyeq : vty_int = ty :=
   eq_sym (ty_constint_inv Hty) in
-  cast_dom_vty Htyeq z;
+  cast_dom_vty Htyeq (int_to_dom pd z);
 
 term_rep v (Tconst (ConstReal r)) ty Hty :=
   let Htyeq : vty_real = ty :=
   eq_sym (ty_constreal_inv Hty) in
-  cast_dom_vty Htyeq (Q2R r);
+  cast_dom_vty Htyeq (real_to_dom pd (Q2R r));
 
 term_rep v (Tvar x) ty Hty :=
   let Heq : ty = snd x := ty_var_inv Hty in
@@ -1530,10 +1530,10 @@ Lemma get_arg_list_ext {gamma1 gamma2 pd} (v: val_typevar)
   (vs: list vty) (ts1 ts2: list term) 
   (reps1: forall (t: term) (ty: vty),
     term_has_type gamma1 t ty ->
-    domain (dom_aux pd) (v_subst v ty))
+    dom_aux pd (v_subst v ty))
   (reps2: forall (t: term) (ty: vty),
     term_has_type gamma2 t ty ->
-    domain (dom_aux pd) (v_subst v ty))
+    dom_aux pd (v_subst v ty))
   (Hts: length ts1 = length ts2)
   (Hreps: forall (i: nat),
     i < length ts1 ->
@@ -1576,7 +1576,7 @@ Lemma get_arg_list_eq {gamma} pd (v: val_typevar)
 (vs: list vty) (ts: list term) 
 (reps1 reps2: forall (t: term) (ty: vty),
   term_has_type gamma t ty ->
-  domain (dom_aux pd) (v_subst v ty))
+  dom_aux pd (v_subst v ty))
 (Hreps: Forall
 (fun tm : term =>
  forall (ty : vty) (Hty1 Hty2: term_has_type gamma tm ty),
@@ -1630,7 +1630,7 @@ Lemma match_val_single_ext {gamma1 gamma2: context}
   (p: pattern)
   (Hval1: pattern_has_type gamma1 p ty)
   (Hval2: pattern_has_type gamma2 p ty)
-  (d: domain (dom_aux pd) (v_subst vt2 ty)):
+  (d: dom_aux pd (v_subst vt2 ty)):
   opt_related (fun m1 m2 =>
     forall x1 y1, amap_lookup m1 x1 = Some y1 <->
       exists y2 (Heq: projT1 y1 = projT1 y2),
@@ -1694,7 +1694,7 @@ Proof.
       injection Heq2; intros Hmap. apply Hmap.
     }
     (*Relate the two constr reps*)
-    pose proof (find_constr_rep_equiv gamma_valid1 gamma_valid2 pf_eq (adt_props gamma_valid1 pd pf1)
+    pose proof (find_constr_rep_equiv gamma_valid1 gamma_valid2 (dom_aux_int pd) pf_eq (adt_props gamma_valid1 pd pf1)
                   (adt_props gamma_valid2 pd pf2) Hinctx2 Hinctx1 Hinmut2 (eq_sym Heq2)
                   (eq_trans (length_map (v_subst vt1) vs2) e0)
                   (eq_trans (length_map (v_subst vt2) vs2) e0)
@@ -1791,9 +1791,9 @@ Proof.
       intros x1 y2.
       (*Useful to know None iff None*)
       (*Awkward to state*)
-      assert (Hnone: forall l1 l2 (Hm12: forall (x1 : vsymbol) (y1 : {x : sort & domain (dom_aux pd) x}),
+      assert (Hnone: forall l1 l2 (Hm12: forall (x1 : vsymbol) (y1 : {x : sort & dom_aux pd x}),
          amap_lookup l1 x1 = Some y1 <->
-         (exists (y2 : {x : sort & domain (dom_aux pd) x}) (Heq : projT1 y1 = projT1 y2),
+         (exists (y2 : {x : sort & dom_aux pd x}) (Heq : projT1 y1 = projT1 y2),
             amap_lookup l2 x1 = Some y2 /\ projT2 y2 = dom_cast (dom_aux pd) Heq (projT2 y1))),
         forall x1, amap_lookup l1 x1 = None <-> amap_lookup l2 x1 = None).
       {
@@ -1885,7 +1885,7 @@ Lemma match_val_single_change_gamma {gamma1 gamma2: context}
   (p: pattern)
   (Hval1: pattern_has_type gamma1 p ty)
   (Hval2: pattern_has_type gamma2 p ty)
-  (d: domain (dom_aux pd) (v_subst vt ty)):
+  (d: dom_aux pd (v_subst vt ty)):
   match_val_single gamma_valid1 pd pf1 vt ty p Hval1 d =
   match_val_single gamma_valid2 pd pf2 vt ty p Hval2 d.
 Proof.
@@ -1911,7 +1911,7 @@ Corollary match_val_single_irrel {gamma} (gamma_valid: valid_context gamma)
   (pd: pi_dom) (pf: pi_funpred gamma_valid pd) (v: val_typevar) (ty: vty)
   (p: pattern)
   (Hval1 Hval2: pattern_has_type gamma p ty)
-  (d: domain (dom_aux pd) (v_subst v ty)) :
+  (d: dom_aux pd (v_subst v ty)) :
   match_val_single gamma_valid pd pf v ty p Hval1 d =
   match_val_single gamma_valid pd pf v ty p Hval2 d.
 Proof.
@@ -1928,9 +1928,9 @@ Lemma match_val_single_change_vt {gamma: context}
   (Heq: v_subst vt2 ty = v_subst vt1 ty)
   (p: pattern)
   (Hval: pattern_has_type gamma p ty)
-  (d: domain (dom_aux pd) (v_subst vt2 ty)):
+  (d: dom_aux pd (v_subst vt2 ty)):
   opt_related (fun l1 l2 =>
-  forall x (y: {s: sort & domain (dom_aux pd) s}),
+  forall x (y: {s: sort & dom_aux pd s}),
     amap_lookup l2 x = Some y ->
     exists z (Heq: projT1 y = projT1 z), amap_lookup l1 x = Some z /\
     projT2 z =  (dom_cast (dom_aux pd) Heq (projT2 y)))
@@ -2222,7 +2222,7 @@ Qed.
 Lemma match_rep_irrel {gamma} (gamma_valid: valid_context gamma) 
   pd pf vt v
    (b1: bool) (ty: gen_type b1) ty1 
-  (d: domain (dom_aux pd) (v_subst vt ty1)) pats Hpats1 Hpats2 Hpats3 Hpats4 :
+  (d: dom_aux pd (v_subst vt ty1)) pats Hpats1 Hpats2 Hpats3 Hpats4 :
 
   match_rep gamma_valid pd pf vt v (term_rep gamma_valid pd pf vt) 
     (formula_rep gamma_valid pd pf vt) b1 ty ty1 d pats Hpats1 Hpats2 =
@@ -2249,7 +2249,7 @@ Context {gamma: context} (gamma_valid: valid_context gamma)
   (pd: pi_dom).
 Variable (pf: pi_funpred gamma_valid pd).
 Notation funs := (funs gamma_valid pd pf).
-Notation domain := (domain (dom_aux pd)).
+Notation domain := (dom_aux pd).
 Notation term_rep := (term_rep gamma_valid pd pf).
 Notation formula_rep := (formula_rep gamma_valid pd pf).
 Notation match_val_single := (match_val_single gamma_valid pd pf).
@@ -2628,7 +2628,7 @@ Proof.
       simpl.
       clear -Hz2.
       (*Need eta-equivalence*)
-      change (fun s => Domain.domain (dom_aux pd) s) with (Domain.domain (dom_aux pd)).
+      change (fun s => dom_aux pd s) with (dom_aux pd).
       rewrite Hz2.
       rewrite !dom_cast_compose.
       apply dom_cast_eq.
@@ -2857,7 +2857,7 @@ Proof.
       simpl.
       clear -Hz2.
       (*Need eta-equivalence*)
-      change (fun s => Domain.domain (dom_aux pd) s) with (Domain.domain (dom_aux pd)).
+      change (fun s => dom_aux pd s) with (dom_aux pd).
       rewrite Hz2.
       rewrite !dom_cast_compose.
       apply dom_cast_eq.

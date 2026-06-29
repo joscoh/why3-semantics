@@ -245,7 +245,7 @@ Defined.
 (*We will need to prove that this has all of the desired properties*)
 
 
-Notation domain := (domain (dom_aux pd)).
+Notation domain := (dom_aux pd).
 
 (*Here, we fix our valuation since we cannot take in any
   input in our final version. We can give a trivial valuation

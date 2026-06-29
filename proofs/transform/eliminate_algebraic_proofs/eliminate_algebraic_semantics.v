@@ -24,9 +24,9 @@ Lemma semantic_constr_inj_c {g1 g2} (g1_valid: valid_context g1) (g2_valid: vali
   (pf1: pi_funpred g1_valid pd) (pf2: pi_funpred g2_valid pd)
   (pf_eq: pf_same_constrs pf1 pf2)
   (vt: typevar -> sort)
-  (d : domain (dom_aux pd) (v_subst vt (vty_cons (adt_name a) args)))
-  (al1: arg_list (domain (dom_aux pd)) (sym_sigma_args c1 (map (v_subst vt) args)))
-  (al2:  arg_list (domain (dom_aux pd)) (sym_sigma_args c2 (map (v_subst vt) args)))
+  (d : dom_aux pd (v_subst vt (vty_cons (adt_name a) args)))
+  (al1: arg_list (dom_aux pd) (sym_sigma_args c1 (map (v_subst vt) args)))
+  (al2:  arg_list (dom_aux pd) (sym_sigma_args c2 (map (v_subst vt) args)))
   (Hsem1: semantic_constr g1_valid pd pf1 vt m_in1 a_in c1_in args_len d al1)
   (Hsem2: semantic_constr g2_valid pd pf2 vt m_in2 a_in c2_in args_len d al2):
   c1 = c2.
@@ -47,9 +47,9 @@ Lemma semantic_constr_inj_al {g1 g2} (g1_valid: valid_context g1) (g2_valid: val
   (pf1: pi_funpred g1_valid pd) (pf2: pi_funpred g2_valid pd)
   (pf_eq: pf_same_constrs pf1 pf2)
   (vt: typevar -> sort)
-  (d : domain (dom_aux pd) (v_subst vt (vty_cons (adt_name a) args)))
-  (al1: arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args)))
-  (al2:  arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args)))
+  (d : dom_aux pd (v_subst vt (vty_cons (adt_name a) args)))
+  (al1: arg_list (dom_aux pd) (sym_sigma_args c (map (v_subst vt) args)))
+  (al2:  arg_list (dom_aux pd) (sym_sigma_args c (map (v_subst vt) args)))
   (Hsem1: semantic_constr g1_valid pd pf1 vt m_in1 a_in c_in args_len d al1)
   (Hsem2: semantic_constr g2_valid pd pf2 vt m_in2 a_in c_in args_len d al2):
   al1 = al2.
@@ -69,7 +69,7 @@ Lemma matches_row_vars_eq {g1 g2} (g1_valid: valid_context g1) (g2_valid: valid_
   (pf1: pi_funpred g1_valid pd) (pf2: pi_funpred g2_valid pd)
   (vt: val_typevar) (vars: list vsymbol) (tys: list vty)
   (Hvarsty1 Hvarsty2 : row_typed tys (map Pvar vars))
-  (a : arg_list (domain (dom_aux pd)) (map (v_subst vt) tys)):
+  (a : arg_list (dom_aux pd) (map (v_subst vt) tys)):
   matches_row g1_valid pd pf1 vt tys a (map Pvar vars) Hvarsty1 =
   matches_row g2_valid pd pf2 vt tys a (map Pvar vars) Hvarsty2.
 Proof.
@@ -88,7 +88,7 @@ Lemma match_val_single_simple_eq {g1 g2} (g1_valid: valid_context g1) (g2_valid:
   (pf1: pi_funpred g1_valid pd) (pf2: pi_funpred g2_valid pd)
   (pf_eq: pf_same_constrs pf1 pf2)
   (vt: typevar -> sort)
-  (ty1: vty) (Htyeq: ty1 = vty_cons (adt_name a) args) (d : domain (dom_aux pd) (v_subst vt ty1)) 
+  (ty1: vty) (Htyeq: ty1 = vty_cons (adt_name a) args) (d : dom_aux pd (v_subst vt ty1)) 
   (p: pattern) (Hty1: pattern_has_type g1 p ty1) (Hty2: pattern_has_type g2 p ty1)
   (Hsimp: simple_pat p):
   match_val_single g1_valid pd pf1 vt ty1 p Hty1 d =
@@ -145,7 +145,7 @@ Lemma match_rep_simple {g1 g2} (g1_valid: valid_context g1) (g2_valid: valid_con
   (pf1: pi_funpred g1_valid pd) (pf2: pi_funpred g2_valid pd)
   (pf_eq: pf_same_constrs pf1 pf2)
   (vt: typevar -> sort) (vv: val_vars pd vt) (b1: bool)
-  (ty: gen_type b1) (ty1: vty) (Hty1: ty1 = vty_cons (adt_name a) args) (d : domain (dom_aux pd) (v_subst vt ty1)) 
+  (ty: gen_type b1) (ty1: vty) (Hty1: ty1 = vty_cons (adt_name a) args) (d : dom_aux pd (v_subst vt ty1)) 
   (pats1: list (pattern * gen_term b1)) (pats2: list (pattern * gen_term b1))
   (Hpatsfst: map fst pats1 = map fst pats2)
   (Hpatsnd: Forall2 (fun (t1 t2 : gen_term b1) => forall Hty1 Hty2 vv, 
@@ -183,7 +183,7 @@ Lemma match_rep_simple_constr {gamma} (gamma_valid: valid_context gamma) {m a c}
   (Hty2: Forall (fun x : pattern * gen_term b1 => gen_typed gamma b1 (snd x) ty) ps) 
   (Hsimp: simple_pat_match (map fst ps))
   {tys vars t2} (Hinc: In (Pconstr c tys (map Pvar vars), t2) ps)
-  {al: arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args))}
+  {al: arg_list (dom_aux pd) (sym_sigma_args c (map (v_subst vt) args))}
   (Hsem: semantic_constr gamma_valid pd pf vt m_in a_in c_in args_length d al):
   match_rep gamma_valid pd pf vt vv (term_rep gamma_valid pd pf vt) (formula_rep gamma_valid pd pf vt)
     b1 ty (vty_cons (adt_name a) args) d ps Hty1 Hty2 =
@@ -282,7 +282,7 @@ Lemma match_rep_simple_wild {gamma} (gamma_valid: valid_context gamma) {m a c}
   (Hty2: Forall (fun x : pattern * gen_term b1 => gen_typed gamma b1 (snd x) ty) ps) 
   (Hsimp: simple_pat_match (map fst ps))
   {t2} (Hinw: In (Pwild, t2) ps) (Hnotinc: negb (existsb (fun x => is_this_constr x c) (map fst ps)))
-  {al: arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args))}
+  {al: arg_list (dom_aux pd) (sym_sigma_args c (map (v_subst vt) args))}
   (Hsem: semantic_constr gamma_valid pd pf vt m_in a_in c_in args_length d al):
   match_rep gamma_valid pd pf vt vv (term_rep gamma_valid pd pf vt) (formula_rep gamma_valid pd pf vt)
     b1 ty (vty_cons (adt_name a) args) d ps Hty1 Hty2 =
@@ -679,9 +679,9 @@ Lemma rewriteT_match_ith {tm: term} {ps: list (pattern * term)}
   (Hallty : Forall (fun x => term_has_type gamma (snd x) ty) ps)
   (Hallpat : Forall (fun x => pattern_has_type gamma (fst x) (vty_cons (adt_name a) args)) ps),
   let d := term_rep gamma_valid pd pf vt vv tm (vty_cons (adt_name a) args) Htytm1
-   : domain (dom_aux pd) (v_subst vt (vty_cons (adt_name a) args)) in
+   : dom_aux pd (v_subst vt (vty_cons (adt_name a) args)) in
   forall
-  (al : arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args))) 
+  (al : arg_list (dom_aux pd) (sym_sigma_args c (map (v_subst vt) args))) 
   (Hsem : semantic_constr gamma_valid pd pf vt m_in a_in c_in Hargslen d al),
 term_rep new_gamma_valid pd new_pf vt vv (nth i tl tm_d) ty Htyith =
 match_rep gamma_valid pd pf vt vv (term_rep gamma_valid pd pf vt)
@@ -996,9 +996,9 @@ Lemma rewriteF_find_semantic_constr {m a c c1 args} (m_in: mut_in_ctx m gamma) (
           (rewriteF keep_muts new_constr_name badnames gamma badvars sign) ps)
     : option formula in
   let d := term_rep gamma_valid pd pf vt vv tm (vty_cons (adt_name a) args) Hty1'
-    : domain (dom_aux pd) (v_subst vt (vty_cons (adt_name a) args)) in
+    : dom_aux pd (v_subst vt (vty_cons (adt_name a) args)) in
   forall
-  (al : arg_list (domain (dom_aux pd)) (sym_sigma_args c (map (v_subst vt) args)))
+  (al : arg_list (dom_aux pd) (sym_sigma_args c (map (v_subst vt) args)))
   (Hsem : semantic_constr gamma_valid pd pf vt m_in a_in c_in Hargslen d al)
   (Halltyfind : forall x : funsym,
              In x (adt_constr_list a) ->
@@ -1128,7 +1128,7 @@ Proof.
     - apply NoDup_combine_l. apply gen_strs_nodup.
   }
   (*The key result we need for both cases: the term reps are equal iff the constrs and arg lists are equal*)
-  assert (Hheq: forall (h : arg_list (domain (dom_aux pd)) (map (v_subst vt) (map snd (fst z)))) Hty1 Hty2,
+  assert (Hheq: forall (h : arg_list (dom_aux pd) (map (v_subst vt) (map snd (fst z)))) Hty1 Hty2,
     term_rep new_gamma_valid pd new_pf vt (substi_mult pd vt vv (fst z) h)
       (rewriteT keep_muts new_constr_name badnames gamma badvars tm) (vty_cons (adt_name a) args)
       Hty1 =
@@ -2937,8 +2937,9 @@ Proof.
   (*Now use constr disjointness*)
   destruct Hc1 as [[c1_in al2] Hx'].
   subst x.
-  destruct (funsym_eq_dec c c1); auto.
-  apply constrs_disj in Hx; auto. contradiction.
+  destruct (funsym_eq_dec c c1);  auto.
+  - subst c1; reflexivity.
+  - apply constrs_disj in Hx; auto. contradiction.
 Qed.
 
 (*4. Discriminator axiom sound*)

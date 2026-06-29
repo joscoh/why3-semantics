@@ -1132,7 +1132,7 @@ Lemma match_val_single_alpha_p {ty: vty}
   (p1 p2: pattern)
   (Hty1: pattern_has_type gamma p1 ty)
   (Hty2: pattern_has_type gamma p2 ty)
-  (d: domain (dom_aux pd) (v_subst vt ty))
+  (d: dom_aux pd (v_subst vt ty))
   (m: amap vsymbol vsymbol * amap vsymbol vsymbol)
   (res: amap vsymbol vsymbol * amap vsymbol vsymbol)
   (Hbij1: bij_map (fst m) (snd m))
@@ -1334,7 +1334,7 @@ Qed.
 Corollary match_val_single_alpha_p_full {ty: vty} {p1 p2: pattern}
   (Hty1: pattern_has_type gamma p1 ty)
   (Hty2: pattern_has_type gamma p2 ty)
-  (d: domain (dom_aux pd) (v_subst vt ty))
+  (d: dom_aux pd (v_subst vt ty))
   {res}
   (Halpha: a_equiv_p p1 p2 = Some res):
   opt_related (fun s1 s2 =>

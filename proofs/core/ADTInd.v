@@ -432,7 +432,7 @@ Proof.
   apply (existT (Logic.eq_refl)). reflexivity.
 Qed.
 
-Notation domain := (domain (dom_aux pd)).
+Notation domain := (dom_aux pd).
 
 (*Finally, we define a generalized induction principle on ADTs: 
   - Suppose we have P, a proposition on all ADTs in mut adt m
@@ -446,7 +446,7 @@ Theorem adt_rep_ind m m_in srts
   (P: forall t t_in, adt_rep m srts (dom_aux pd) t t_in -> Prop):
   (forall t t_in (x: adt_rep m srts (dom_aux pd) t t_in) 
     (c: funsym) (Hc: constr_in_adt c t) (a: arg_list domain (sym_sigma_args c srts))
-    (Hx: x = constr_rep gamma_valid m m_in srts Hlen (dom_aux pd) t t_in c
+    (Hx: x = constr_rep gamma_valid m m_in srts Hlen (dom_aux pd) (dom_aux_int pd) (dom_aux_real pd) t t_in c
       Hc (Interp2.adts gamma pd pdf m srts) a),
     (forall i t' t_in' Heq, i < length (s_args c) ->
       (*If nth i a has type adt_rep ..., then P holds of it*)
@@ -515,7 +515,7 @@ Proof.
     Then we use (complicated, dependent) inversion to
     connect the components of x' with those of the constructor and args
     *)
-  destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd)
+  destruct (find_constr_rep gamma_valid m m_in srts Hlen (dom_aux pd) (dom_aux_int pd) (dom_aux_real pd)
     (fin_nth (typs m) i) (In_in_bool adt_dec _ _ (fin_nth_in (typs m) i))
     (Interp2.adts gamma pd pdf m srts) (gamma_all_unif gamma_valid m m_in) x') as [c [[c_in args] Hx']].
   (*Here, we need info about a*)

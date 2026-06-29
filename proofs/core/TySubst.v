@@ -1114,7 +1114,7 @@ Lemma match_val_single_ty_subst pd pf vt (ty: vty)
   (Hp2: pattern_has_type gamma (ty_subst_p p) (ty_subst' params tys ty))
   (Heq: v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty = 
     v_subst vt (ty_subst' params tys ty))
-  (d: domain (dom_aux pd) (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty)):
+  (d: dom_aux pd (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty)):
   opt_related 
     (fun m1 m2 =>
       forall x y, 
@@ -1636,7 +1636,7 @@ Proof.
     match goal with
     | |- ClassicalEpsilon.epsilon ?i1 ?f = dom_cast ?d ?Heq (ClassicalEpsilon.epsilon ?i2 ?g) => 
       let H := fresh in
-      assert (H: g = (fun (z: domain (dom_aux pd) (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty1)) =>
+      assert (H: g = (fun (z: dom_aux pd (v_subst (vt_with_args vt params (map (v_subst vt) tys)) ty1)) =>
         f (dom_cast (dom_aux pd) Heq z))); [| generalize dependent f;
         intros; rewrite H]
     end.

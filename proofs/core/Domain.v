@@ -8,18 +8,21 @@ Set Bullet Behavior "Strict Subproofs".
 
 Definition arg_list (domain: Types.sort -> Set) := hlist domain.
 
-Definition domain (dom_aux: sort -> Set) (s: Types.sort) : Set :=
+Definition dom_int_wf (domain: Types.sort -> Set) := domain s_int = Z.
+Definition dom_real_wf (domain: Types.sort -> Set) := domain s_real = R.
+
+(*Definition domain (dom_aux: sort -> Set) (s: Types.sort) : Set :=
   match sort_to_ty s with
   | vty_int => Z
   | vty_real => R
   | _ => dom_aux s
-  end.
+  end.*)
 
 (*Casting domains - will be VERY useful*)
 Section DomCast.
 
 Variable dom_aux : sort -> Set.
-Notation domain := (domain dom_aux).
+Notation domain := dom_aux.
 
 Definition dom_cast {v1 v2: Types.sort} (Heq: v1 = v2) (x: domain v1) : 
   domain v2 :=
@@ -238,7 +241,7 @@ Proof.
   subst. reflexivity.
 Qed.
 
-Lemma hlist_app_hnth1 (dom: sort -> Set) tys1 tys2 (h1 : arg_list (domain dom) tys1) (h2: arg_list (domain dom) tys2) d1 d2 n:
+Lemma hlist_app_hnth1 (dom: sort -> Set) tys1 tys2 (h1 : arg_list dom tys1) (h2: arg_list dom tys2) d1 d2 n:
   n < length tys1 ->
   exists Heq,
   hnth n (hlist_app _ tys1 tys2 h1 h2) d1 d2 =
@@ -253,7 +256,7 @@ Proof.
       exists Heq. rewrite (hlist_inv h1). simp hlist_app. simpl. auto.
 Qed.
 
-Lemma hlist_app_hnth2 (dom: sort -> Set) tys1 tys2 (h1 : arg_list (domain dom) tys1) (h2: arg_list (domain dom) tys2) d1 d2 n:
+Lemma hlist_app_hnth2 (dom: sort -> Set) tys1 tys2 (h1 : arg_list dom tys1) (h2: arg_list dom tys2) d1 d2 n:
   n >= length tys1 ->
   exists Heq,
   hnth n (hlist_app _ tys1 tys2 h1 h2) d1 d2 =
@@ -277,10 +280,10 @@ Proof.
       intros. exists Heq1. rewrite (hlist_inv h1). simp hlist_app. simpl. auto.
 Qed.
 
-Lemma hlist_rev_hnth (dom: sort -> Set) i tys (h: arg_list (domain dom) tys) d1 d2:
+Lemma hlist_rev_hnth (dom: sort -> Set) i tys (h: arg_list dom tys) d1 d2:
   i < length tys ->
   exists Heq,
-  hnth i (hlist_rev (domain dom) tys h) d1 d2 =
+  hnth i (hlist_rev dom tys h) d1 d2 =
   dom_cast dom Heq (hnth (length tys - S i) h d1 d2).
 Proof.
   revert i. induction tys as [| ty1 tys IH]; simpl.
@@ -289,8 +292,8 @@ Proof.
     destruct j as [| j'].
     + assert (i = length tys) by lia. subst.
       (*Use app2 lemma*)
-      destruct (hlist_app_hnth2 dom _ _ (hlist_rev (domain dom) tys (hlist_tl h)) 
-        (HL_cons (domain dom) ty1 [] (hlist_hd h) (HL_nil (domain dom))) d1 d2 (length tys)
+      destruct (hlist_app_hnth2 dom _ _ (hlist_rev dom tys (hlist_tl h)) 
+        (HL_cons dom ty1 [] (hlist_hd h) (HL_nil dom)) d1 d2 (length tys)
         (ltac:(solve_len))) as [Heq1 Happ].
       revert Heq1 Happ. rewrite length_rev, Nat.sub_diag. simpl. intros.
       exists Heq1. rewrite (hlist_inv h). simp hlist_rev. simpl; auto.
@@ -305,8 +308,8 @@ Proof.
       rewrite (hlist_inv h).
       simp hlist_rev.
      (*use app1 lemma*)
-      destruct (hlist_app_hnth1 dom _ _ (hlist_rev (domain dom) tys (hlist_tl h)) 
-        (HL_cons (domain dom) ty1 [] (hlist_hd h) (HL_nil (domain dom))) d1 d2 i
+      destruct (hlist_app_hnth1 dom _ _ (hlist_rev dom tys (hlist_tl h)) 
+        (HL_cons dom ty1 [] (hlist_hd h) (HL_nil dom)) d1 d2 i
         (ltac:(solve_len))) as [Heq1 Happ].
       rewrite Happ.
       destruct (IH (hlist_tl h) i ltac:(lia)) as [Heq2 IH2].

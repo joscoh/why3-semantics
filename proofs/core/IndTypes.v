@@ -1086,9 +1086,9 @@ Variable srts_len: length srts = length (m_params m).
 Definition sigma : vty -> Types.sort :=
   ty_subst_s (m_params m)  srts.
 
-Variable domain_aux: Types.sort -> Set.
-
-Notation domain := (domain domain_aux).
+Variable domain: Types.sort -> Set.
+Variable dom_int: dom_int_wf domain.
+Variable dom_real: dom_real_wf domain.
 
 (*Variable map - evaluate the variable after substituting with the
   sort given by the map sigma (args -> sorts)*)
@@ -1157,9 +1157,33 @@ Definition sigma_aux (l: list vty) := map sigma l.
 Lemma sigma_aux_args: sigma_aux (s_args c) = sigma_args.
 Proof. reflexivity. Qed.
 
-Definition domain_sigma_int_Z (x: domain (sigma vty_int)) : Z.
-rewrite sigma_int in x. exact x.
+Definition domain_sigma_int (x: domain (sigma vty_int)) : Z.
+exact (scast dom_int x).
 Defined.
+
+Definition domain_sigma_real (x: domain (sigma vty_real)) : R.
+exact (scast dom_real x).
+Defined.
+
+Definition int_to_domain_sigma (x: Z) : domain (sigma vty_int).
+exact (scast (Logic.eq_sym dom_int) x).
+Defined.
+
+Definition real_to_domain_sigma (x: R) : domain (sigma vty_real).
+exact (scast (Logic.eq_sym dom_real) x).
+Defined.
+
+Lemma domain_sigma_int_inv b: domain_sigma_int (int_to_domain_sigma b) = b.
+Proof.
+  unfold domain_sigma_int, int_to_domain_sigma.
+  rewrite !scast_scast. rewrite eq_trans_sym_inv_l. reflexivity.
+Qed.
+
+Lemma domain_sigma_real_inv b: domain_sigma_real (real_to_domain_sigma b) = b.
+Proof.
+  unfold domain_sigma_real, real_to_domain_sigma.
+  rewrite !scast_scast. rewrite eq_trans_sym_inv_l. reflexivity.
+Qed.
 
 Definition args_to_constr_base_aux (l: list vty) 
   (a: arg_list domain (sigma_aux l)) :
@@ -1171,13 +1195,13 @@ Proof.
     set (Hd:=hlist_hd a).
     set (Hal:=hlist_tl a).
     destruct a0.
-    + exact (build_sprod_cons Hd (IHl Hal)).
-    + exact (build_sprod_cons Hd (IHl Hal)). 
+    + exact (build_sprod_cons (domain_sigma_int Hd) (IHl Hal)).
+    + exact (build_sprod_cons (domain_sigma_real Hd) (IHl Hal)). 
     + exact (build_sprod_cons Hd (IHl Hal)).
     + generalize dependent (ts_in_mut_list t0 adts); intros b.
       destruct b.
       * exact (IHl Hal).
-      * exact (build_sprod_cons (dom_cast domain_aux (sigma_cons t0 l0) Hd) (IHl Hal)).
+      * exact (build_sprod_cons (dom_cast domain (sigma_cons t0 l0) Hd) (IHl Hal)).
 Defined.
 
 Definition args_to_constr_base (a: arg_list domain sigma_args):
@@ -1501,17 +1525,20 @@ Definition get_sprod_parts {a l} (Ha: is_nonind a)
   domain (sigma a) *
   big_sprod [seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l].
 Proof.
-  simpl in x. destruct a; simpl in x; try solve [
+  simpl in x. destruct a; simpl in x; try solve[
   destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]); simpl;
-  try exact (x, tt);
-  try exact x].
+     try exact (int_to_domain_sigma x, tt);
+     try exact (int_to_domain_sigma (fst x), (snd x));
+     try exact (real_to_domain_sigma x, tt);
+     try exact (real_to_domain_sigma (fst x), (snd x));
+     try exact (x, tt); try exact x].
   simpl in Ha.
   destruct (ts_in_mut_list t0 adts).
   + exfalso. exact (not_false Ha).
   + simpl in x.
     destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]); simpl.
-    exact (dom_cast domain_aux (esym (sigma_cons _ _)) x, tt).
-    exact (dom_cast domain_aux (esym (sigma_cons _ _)) x.1, x.2).
+    exact (dom_cast domain (esym (sigma_cons _ _)) x, tt).
+    exact (dom_cast domain (esym (sigma_cons _ _)) x.1, x.2).
 Defined. 
 
 (*While the W type uses a function from (finite n) to tuples
@@ -1614,7 +1641,7 @@ Ltac solve_cast_list_eq l :=
   intros n d Hn;
   assert (Hn': (n < length (map sigma (filter (rec_occ_fun (adt_name (fin_nth adts x)))l)))%coq_nat) by 
     (rewrite length_map; apply Hn);
-  assert (Hsint: domain s_int) by (unfold domain; simpl; apply 0%Z);
+  assert (Hsint: domain s_int) by (exact (scast (Logic.eq_sym dom_int) 0%Z));
   erewrite -> !hlist_to_list_nth_dec' with(Hi:=Hn') (d1:=s_int) (d2:=Hsint);
   try apply sort_eq_dec;
   apply cast_eq; [apply sort_eq_dec | apply d].
@@ -1660,9 +1687,9 @@ Proof.
       * rewrite Hat1. clear Hat1. unfold build_sprod_cons.  simpl.
         subst x. simpl in *.
         destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-        -- reflexivity.
-        -- destruct b; reflexivity.
-      * rewrite <- Hat2. subst x. simpl in *. clear.
+        -- apply domain_sigma_int_inv.
+        -- destruct b; rewrite domain_sigma_int_inv. reflexivity.
+      * rewrite <- Hat2. subst x. simpl in *. clear -dom_int.
       destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]);
       solve_cast_list_eq l. 
     + simpl in i.
@@ -1675,9 +1702,9 @@ Proof.
       * rewrite Hat1. clear Hat1. unfold build_sprod_cons.  simpl.
         subst x. simpl in *.
         destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-        -- reflexivity.
-        -- destruct b; reflexivity.
-      * rewrite <- Hat2. subst x. simpl in *. clear.
+        --apply domain_sigma_real_inv.
+        -- destruct b; rewrite domain_sigma_real_inv. reflexivity.
+      * rewrite <- Hat2. subst x. simpl in *. clear -dom_int.
         destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]);
         solve_cast_list_eq l.
     + simpl in i.
@@ -1692,7 +1719,7 @@ Proof.
         destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
         -- reflexivity.
         -- destruct b; reflexivity.
-      * rewrite <- Hat2. subst x. simpl in *. clear.
+      * rewrite <- Hat2. subst x. simpl in *. clear -dom_int.
         destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]);
         solve_cast_list_eq l.
     + simpl in *. (*the hard case*)
@@ -1805,8 +1832,8 @@ Proof.
           }
         unshelve epose (y:=_:domain (sigma (vty_cons t0 l0))). {
           clear -b. destruct ([seq vty_to_set var_map typesym_map i | i <- get_nonind_vtys adts l]).
-          exact (dom_cast domain_aux (esym (sigma_cons _ _)) b).
-          exact (dom_cast domain_aux (esym (sigma_cons _ _)) b.1).
+          exact (dom_cast domain (esym (sigma_cons _ _)) b).
+          exact (dom_cast domain (esym (sigma_cons _ _)) b.1).
         }
         specialize (IHl (uniform_list_cons Hl') b' i Hi').
         destruct IHl as [atl [Hat1 Hat2]].
@@ -1956,7 +1983,7 @@ Proof.
   - rewrite (hlist_inv a1). rewrite (hlist_inv a2).
      destruct a.
     + apply build_sprod_cons_inj in H. destruct H.
-      f_equal. apply H.
+      f_equal. { apply scast_inj in H. apply H. }
       apply IHl; auto. intros x.
       specialize (H0 x). clear -H0.
       unfold args_to_ind_base_aux in *.
@@ -1967,7 +1994,7 @@ Proof.
       apply hlist_to_list_inj in H0; [|apply sort_eq_dec].
       rewrite H0. reflexivity.
     + apply build_sprod_cons_inj in H. destruct H.
-      f_equal. apply H.
+      f_equal. { apply scast_inj in H. apply H. }
       apply IHl; auto. intros x.
       specialize (H0 x). clear -H0.
       unfold args_to_ind_base_aux in *.
@@ -2137,21 +2164,22 @@ Lemma constr_rep_change_gamma {gamma1 gamma2: context}
   (m_in2: mut_in_ctx m gamma2)
   (srts: list Types.sort)
   (srts_len : Datatypes.length srts = Datatypes.length (m_params m))
-  (domain_aux : Types.sort -> Set) (t : alg_datatype)
+  (domain : Types.sort -> Set) (dom_int: dom_int_wf domain)
+  (dom_real: dom_real_wf domain) (t : alg_datatype)
   (t_in : adt_in_mut t m)
   (c: funsym)
   (c_in: constr_in_adt c t)
   (adts1: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) (Hin : adt_in_mut a m)
     (srts_length: length srts = length (m_params m)),
-  domain domain_aux (s_cons (adt_name a) srts) =
-  adt_rep m srts domain_aux a Hin)
+  domain (s_cons (adt_name a) srts) =
+  adt_rep m srts domain a Hin)
   (adts2: forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) (Hin : adt_in_mut a m)
     (srts_length: length srts = length (m_params m)),
-  domain domain_aux (s_cons (adt_name a) srts) =
-  adt_rep m srts domain_aux a Hin)
-  (a: arg_list (domain domain_aux) (sym_sigma_args c srts)):
-  constr_rep gamma_valid1 m m_in1 srts srts_len domain_aux t t_in c c_in adts1 a =
-  constr_rep gamma_valid2 m m_in2 srts srts_len domain_aux t t_in c c_in adts2 a.
+  domain (s_cons (adt_name a) srts) =
+  adt_rep m srts domain a Hin)
+  (a: arg_list domain (sym_sigma_args c srts)):
+  constr_rep gamma_valid1 m m_in1 srts srts_len domain dom_int dom_real t t_in c c_in adts1 a =
+  constr_rep gamma_valid2 m m_in2 srts srts_len domain dom_int dom_real t t_in c c_in adts2 a.
 Proof.
   unfold constr_rep.
   f_equal.
@@ -2172,40 +2200,40 @@ Lemma find_constr_rep_change_gamma {gamma1 gamma2: context}
   (m: mut_adt) (m_in1: mut_in_ctx m gamma1) (m_in2: mut_in_ctx m gamma2)
   (srts: list Types.sort)
   (srts_len : Datatypes.length srts = Datatypes.length (m_params m))
-  (domain_aux : Types.sort -> Set) (t : alg_datatype)
+  (domain: Types.sort -> Set) (dom_int: dom_int_wf domain) (dom_real: dom_real_wf domain) (t : alg_datatype)
   (t_in : adt_in_mut t m)
   (dom_adts1 : forall (a : alg_datatype) (m_in: mut_in_ctx m gamma1) 
               (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
-              domain domain_aux (s_cons (adt_name a) srts) =
-              adt_rep m srts domain_aux a Hin)
+              domain (s_cons (adt_name a) srts) =
+              adt_rep m srts domain a Hin)
   (dom_adts2 : forall (a : alg_datatype) (m_in: mut_in_ctx m gamma2) 
               (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
-              domain domain_aux (s_cons (adt_name a) srts) =
-              adt_rep m srts domain_aux a Hin)
+              domain (s_cons (adt_name a) srts) =
+              adt_rep m srts domain a Hin)
   (m_unif: uniform m)
-  (x: adt_rep m srts domain_aux t t_in):
+  (x: adt_rep m srts domain t t_in):
   projT1 (find_constr_rep gamma_valid1 m m_in1 
-    srts srts_len domain_aux t t_in dom_adts1 m_unif x) =
+    srts srts_len domain dom_int dom_real t t_in dom_adts1 m_unif x) =
   projT1 (find_constr_rep gamma_valid2 m m_in2 
-    srts srts_len domain_aux t t_in dom_adts2 m_unif x).
+    srts srts_len domain dom_int dom_real t t_in dom_adts2 m_unif x).
 Proof.
   unfold find_constr_rep.
   simpl.
-  assert (projT1 (find_constr (var_map m srts domain_aux) (typesym_map m srts domain_aux) 
+  assert (projT1 (find_constr (var_map m srts domain) (typesym_map m srts domain) 
   (typs m) (get_idx adt_dec t (typs m) t_in)
   (fun (constrs : ne_list funsym)
      (H : In constrs (map (fun i : alg_datatype => adt_constrs i) (typs m))) =>
    @constrs_nodups gamma1 gamma_valid1 m constrs m_in1 H) x) =
-   projT1 (find_constr (var_map m srts domain_aux) (typesym_map m srts domain_aux) 
+   projT1 (find_constr (var_map m srts domain) (typesym_map m srts domain) 
           (typs m) (get_idx adt_dec t (typs m) t_in)
           (fun (constrs : ne_list funsym)
              (H : In constrs (map (fun i : alg_datatype => adt_constrs i) (typs m))) =>
            @constrs_nodups gamma2 gamma_valid2 m constrs m_in2 H) x)).
   2: {
-    destruct (find_constr (var_map m srts domain_aux) (typesym_map m srts domain_aux) 
+    destruct (find_constr (var_map m srts domain) (typesym_map m srts domain) 
     (typs m) (get_idx adt_dec t (typs m) t_in)
     (fun constrs : ne_list funsym => [eta constrs_nodups gamma_valid1]) x);
-    destruct (find_constr (var_map m srts domain_aux) (typesym_map m srts domain_aux) 
+    destruct (find_constr (var_map m srts domain) (typesym_map m srts domain) 
     (typs m) (get_idx adt_dec t (typs m) t_in)
     (fun constrs : ne_list funsym => [eta constrs_nodups gamma_valid2]) x);
     simpl in H. subst. destruct s, s0. destruct x0, x2.
@@ -2223,7 +2251,7 @@ Proof.
     m_in1 (constrs_in_list (typs m) (get_idx adt_dec t (adts m) t_in)))).
   2: {
     rewrite H.
-    destruct (get_funsym_base (var_map m srts domain_aux) (typesym_map m srts domain_aux) 
+    destruct (get_funsym_base (var_map m srts domain) (typesym_map m srts domain) 
     (typs m) (adt_name (fin_nth (typs m) (get_idx adt_dec t (adts m) t_in)))
     (adt_constrs (fin_nth (typs m) (get_idx adt_dec t (adts m) t_in)))
     (constrs_nodups gamma_valid1
@@ -2237,16 +2265,17 @@ Qed.
 
 Lemma constr_rep_inj_iff_strong {gamma} (gamma_valid: valid_context gamma) {m a c1 c2} 
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c1_in: constr_in_adt c1 a) (c2_in: constr_in_adt c2 a)
-  {srts} (srts_len: length srts = length (m_params m)) (domain_aux: Types.sort -> Set)
+  {srts} (srts_len: length srts = length (m_params m)) (domain: Types.sort -> Set)
+  (dom_int: dom_int_wf domain) (dom_real: dom_real_wf domain)
   (dom_adts : forall a : alg_datatype,
                      mut_in_ctx m gamma ->
                      forall (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
-                     domain domain_aux (s_cons (adt_name a) srts) =
-                     adt_rep m srts domain_aux a Hin)
-  (a1: arg_list (domain domain_aux) (sym_sigma_args c1 srts))
-  (a2: arg_list (domain domain_aux) (sym_sigma_args c2 srts)):
-  constr_rep gamma_valid m m_in srts srts_len domain_aux a a_in c1 c1_in dom_adts a1 =
-  constr_rep gamma_valid m m_in srts srts_len domain_aux a a_in c2 c2_in dom_adts a2 <->
+                     domain (s_cons (adt_name a) srts) =
+                     adt_rep m srts domain a Hin)
+  (a1: arg_list domain (sym_sigma_args c1 srts))
+  (a2: arg_list domain (sym_sigma_args c2 srts)):
+  constr_rep gamma_valid m m_in srts srts_len domain dom_int dom_real a a_in c1 c1_in dom_adts a1 =
+  constr_rep gamma_valid m m_in srts srts_len domain dom_int dom_real a a_in c2 c2_in dom_adts a2 <->
   exists (Heq: c1 = c2), a2 = cast_arg_list (f_equal (fun (c: funsym) => sym_sigma_args c srts) Heq )a1.
 Proof.
   split.
@@ -2261,15 +2290,16 @@ Qed.
 
 Lemma constr_rep_inj_iff {gamma} (gamma_valid: valid_context gamma) {m a c} 
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
-  {srts} (srts_len: length srts = length (m_params m)) (domain_aux: Types.sort -> Set)
+  {srts} (srts_len: length srts = length (m_params m)) (domain: Types.sort -> Set)
+  (dom_int: dom_int_wf domain) (dom_real: dom_real_wf domain)
   (dom_adts : forall a : alg_datatype,
                      mut_in_ctx m gamma ->
                      forall (Hin : adt_in_mut a m) (srts_length: length srts = length (m_params m)),
-                     domain domain_aux (s_cons (adt_name a) srts) =
-                     adt_rep m srts domain_aux a Hin)
-  (a1 a2: arg_list (domain domain_aux) (sym_sigma_args c srts)):
-  constr_rep gamma_valid m m_in srts srts_len domain_aux a a_in c c_in dom_adts a1 =
-  constr_rep gamma_valid m m_in srts srts_len domain_aux a a_in c c_in dom_adts a2 <->
+                     domain (s_cons (adt_name a) srts) =
+                     adt_rep m srts domain a Hin)
+  (a1 a2: arg_list domain (sym_sigma_args c srts)):
+  constr_rep gamma_valid m m_in srts srts_len domain dom_int dom_real a a_in c c_in dom_adts a1 =
+  constr_rep gamma_valid m m_in srts srts_len domain dom_int dom_real a a_in c c_in dom_adts a2 <->
   a1 = a2.
 Proof.
   rewrite constr_rep_inj_iff_strong.

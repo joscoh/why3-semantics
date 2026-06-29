@@ -17,7 +17,7 @@ Record pi_dom_full (gamma: context) (pd: pi_dom) := {
     adts: forall (m: mut_adt) (srts: list sort)
     (a: alg_datatype) (m_in: mut_in_ctx m gamma) (Hin: adt_in_mut a m)
     (Hlen: length srts = length (m_params m)),
-    (domain (dom_aux pd)) (s_cons (adt_name a) srts) =
+    dom_aux pd (s_cons (adt_name a) srts) =
     IndTypes.adt_rep m srts (dom_aux pd) a Hin;
 
 }.

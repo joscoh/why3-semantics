@@ -581,12 +581,11 @@ Proof.
   assert (Hveq: (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n1))) = 
     (var_map m srts (ts_map_to_pd (mk_ts_map gamma pd n2)))). {
     apply functional_extensionality. intros x.
-    unfold var_map. unfold domain. unfold sigma. simpl. unfold ty_subst_s.
+    unfold var_map. unfold sigma, ty_subst_s.
     simpl. 
     destruct (ty_subst_fun_cases (m_params m) srts s_int x) as [Hin | Hd].
     + remember (ty_subst_fun (m_params m) srts s_int x) as t.
-      destruct (sort_to_ty t) eqn : Hs; auto.
-      { (*sort not var*) destruct t; simpl in Hs; discriminate. }
+      destruct t eqn : Hs; auto.
       simpl in Hn1, Hn2.
       pose proof (list_map_map_In_le (size_sort gamma) Hin).
       apply IHn1; lia.
@@ -598,7 +597,7 @@ Proof.
   intros ts' tys' Hin'. unfold typesym_map.
   (*This is why we need the particular bound: since we are in a constructor
     argument type, it is smaller than the original sort*)
-  unfold domain. simpl.
+  simpl.
   specialize (IHn1 (s_cons ts' (map (sigma m srts) tys')) n2).
   pose proof (mut_ts_pairs_subst_smaller gamma_valid m_in a_in ts' tys' srts Hin').
   apply IHn1; unfold sigma; lia.
@@ -646,11 +645,10 @@ Proof.
       ts_map_to_pd (fun (ts : typesym) (srts0 : list sort) => mk_ts_map gamma pd (n srts0) ts srts0) s)) =
       (var_map m srts (fun s : sort => ts_map_to_pd (mk_ts_map gamma pd (Init.Nat.pred (n srts))) s))).
     {
-      apply functional_extensionality. intros x. unfold var_map. unfold domain, sigma, ty_subst_s. simpl.
+      apply functional_extensionality. intros x. unfold var_map. unfold sigma, ty_subst_s. simpl.
       destruct (ty_subst_fun_cases (m_params m) srts s_int x) as [Hin | Hd].
       + remember (ty_subst_fun (m_params m) srts s_int x) as t.
-        destruct (sort_to_ty t) as [| | | ts tys] eqn : Hs; auto.
-        { (*sort not var*) destruct t; simpl in Hs; discriminate. }
+        destruct t as [| | ts tys] eqn : Hs; auto.
         pose proof (sort_size_in gamma Hin).
         pose proof (size_sorts_cons_bound gamma (adt_name a) srts).
         apply mk_ts_map_invar'; auto.
@@ -662,7 +660,7 @@ Proof.
     rewrite <- Hvar. clear Hvar.
     erewrite mk_adts_ext; [reflexivity|].
     intros ts' tys' Hin'. unfold typesym_map.
-    unfold domain. simpl.
+    simpl.
     pose proof (mk_ts_map_invar_const gamma_valid pd (n (map (sigma m srts) tys'))
       (Init.Nat.pred (n srts)) (s_cons ts' (map (sigma m srts) tys'))) as Hts.
     assert (Hdepth: size_sort gamma (s_cons ts' (map (sigma m srts) tys')) < size_sort gamma (s_cons (adt_name a) srts)).
@@ -780,16 +778,17 @@ Qed.
 (*Main lemma: if all non-adts are inhabited and all typesyms applied to wrong length args are inhabited,
   then all typesyms applied to inhabited types are inhabited as long as [typesym_inhab_fun] holds for 
   large enough n*)
-Lemma typesym_inhab_fun_aux {gamma} (gamma_valid: valid_context gamma) pd
-  (Hpd1: forall ts srts (Hts: find_ts_in_ctx gamma ts = None), domain_nonempty (domain pd) (s_cons ts srts))
+Lemma typesym_inhab_fun_aux {gamma} (gamma_valid: valid_context gamma) (pd: sort -> Set)
+  (pd_int: dom_int_wf pd) (pd_real: dom_real_wf pd)
+  (Hpd1: forall ts srts (Hts: find_ts_in_ctx gamma ts = None), domain_nonempty pd (s_cons ts srts))
   (Hpd2: forall m a ts srts (Hts: find_ts_in_ctx gamma ts = Some (m, a)), length srts <> length (m_params m) -> 
-    domain_nonempty (domain pd) (s_cons ts srts))
+    domain_nonempty pd (s_cons ts srts))
   (pd_full: pd_full gamma pd) n:
    (forall ts srts seen
       (Hn: n >= length (sig_t gamma) - length seen)
       (Hinhab: typesym_inhab_fun gamma seen ts n)
-      (Hsrts: ForallT (fun s => domain_nonempty (domain pd) s) srts),
-      domain_nonempty (domain pd) (s_cons ts srts)).
+      (Hsrts: ForallT (fun s => domain_nonempty pd s) srts),
+      domain_nonempty pd (s_cons ts srts)).
 Proof.
   induction n as [| n' IHn]; [discriminate|].
   intros ts srts seen Hn. rewrite typesym_inhab_fun_eq.
@@ -808,12 +807,12 @@ Proof.
   destruct (Nat.eqb_spec (length srts) (length (m_params m))) as [srts_len | Hlen].
   2: { eapply Hpd2; eauto. }
   constructor.
-  assert (Heq: domain pd (s_cons (adt_name a) srts) = IndTypes.adt_rep m srts pd a a_in).
+  assert (Heq: pd (s_cons (adt_name a) srts) = IndTypes.adt_rep m srts pd a a_in).
   { rewrite <- pd_full; auto. }
   rewrite Heq.
   (*Idea: we use the corresponding [constr_rep] (since we assumed [full]). What remains is
     to construct the [adt_rep], which we do inductively*)
-  apply (IndTypes.constr_rep gamma_valid m m_in srts srts_len pd a a_in c c_in).
+  apply (IndTypes.constr_rep gamma_valid m m_in srts srts_len pd pd_int pd_real a a_in c c_in).
   { intros a' m_in' a_in' Hlen'. apply pd_full; auto. }
   unfold sym_sigma_args.
 
@@ -823,17 +822,17 @@ Proof.
   2: { apply IH. simpl in Hinhab; auto. }
   specialize (Hinhab h (ltac:(simpl; auto))).
   assert (Htys: forall params ty (Hinhab: vty_inhab_fun gamma (adt_name a :: seen) ty n'),
-    domain pd (ty_subst_s params srts ty)).
+    pd (ty_subst_s params srts ty)).
   {
     intros params. induction ty as [| | x | ts tys IHty] using vty_rect; simpl.
-    - intros _. unfold ty_subst_s. simpl. exact 0%Z.
-    - intros _. unfold ty_subst_s. simpl. exact 0%R.
+    - intros _. unfold ty_subst_s. simpl. exact (scast (eq_sym pd_int) 0%Z).
+    - intros _. unfold ty_subst_s. simpl. exact (scast (eq_sym pd_real ) 0%R).
     - intros _. unfold ty_subst_s. simpl.
       destruct (ty_subst_fun_cases_strong params srts s_int x) as [Hin | Hint].
       + (*Use ForallT assumption*)
         apply ForallT_In with (x:=(ty_subst_fun params srts s_int x)) in Hsrts; auto; [|apply sort_eq_dec].
         destruct Hsrts as [y]; apply y.
-      + rewrite Hint. exact 0%Z.
+      + rewrite Hint.  exact (scast (eq_sym pd_int) 0%Z).
     - (*Here, use original IH*)
       intros Hinhab'. apply andb_true in Hinhab'. destruct Hinhab' as [Hall Htsinhab].
       unfold ty_subst_s. simpl.
@@ -854,11 +853,12 @@ Qed.
   ADTs applied to the wrong number of arguments are inhabited, then
   all ADTs are inhabited*)
 Theorem all_adts_inhab {gamma} (gamma_valid: valid_context gamma) (pd: sort -> Set)
-  (Hpd1: forall ts srts (Hts: find_ts_in_ctx gamma ts = None), domain_nonempty (domain pd) (s_cons ts srts))
+  (pd_int: dom_int_wf pd) (pd_real: dom_real_wf pd)
+  (Hpd1: forall ts srts (Hts: find_ts_in_ctx gamma ts = None), domain_nonempty pd (s_cons ts srts))
   (Hpd2: forall m a ts srts (Hts: find_ts_in_ctx gamma ts = Some (m, a)), length srts <> length (m_params m) -> 
-    domain_nonempty (domain pd) (s_cons ts srts))
+    domain_nonempty pd (s_cons ts srts))
   (Hpdf: pd_full gamma pd)
-  srts (Hsrts: ForallT (fun s : sort => domain_nonempty (domain pd) s) srts)
+  srts (Hsrts: ForallT (fun s : sort => domain_nonempty pd s) srts)
   {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (srts_len: length srts = length (m_params m)):
   IndTypes.adt_rep m srts pd a a_in.
@@ -873,60 +873,64 @@ Proof.
     rewrite Forall_forall in Hinhab.
     apply (Hinhab _ (in_bool_In _ _ _ a_in)).
   }
-  pose proof (typesym_inhab_fun_aux gamma_valid pd Hpd1 Hpd2 Hpdf
+  pose proof (typesym_inhab_fun_aux gamma_valid pd pd_int pd_real Hpd1 Hpd2 Hpdf
     (length (sig_t gamma)) (adt_name a) srts []
     (ltac:(simpl; lia)) Htsinhab Hsrts) as x.
   destruct x as [x].
   rewrite <- Hpdf; auto.
 Qed.
 
+Lemma mk_pd_int gamma pd: dom_int_wf (mk_pd gamma pd).
+Proof.
+  reflexivity. 
+Qed.
+
+Lemma mk_pd_real gamma pd: dom_real_wf (mk_pd gamma pd).
+Proof.
+  reflexivity. 
+Qed.
 
 (*Corollary: all adts in context applied to inhabited sorts are inhabited*)
 Theorem mk_pdf_adts_inhab {gamma} (gamma_valid: valid_context gamma) (pd: sort -> Set)
-  (Hpd1: forall ts srts (Hts: find_ts_in_ctx gamma ts = None), domain_nonempty (domain pd) (s_cons ts srts))
+  (Hpd1: forall ts srts (Hts: find_ts_in_ctx gamma ts = None), domain_nonempty pd (s_cons ts srts))
   (Hpd2: forall m a ts srts (Hts: find_ts_in_ctx gamma ts = Some (m, a)), length srts <> length (m_params m) -> 
-    domain_nonempty (domain pd) (s_cons ts srts))
-  srts (Hsrts: ForallT (fun s : sort => domain_nonempty (domain (mk_pd gamma pd)) s) srts)
+    domain_nonempty pd (s_cons ts srts))
+  srts (Hsrts: ForallT (fun s : sort => domain_nonempty (mk_pd gamma pd) s) srts)
   {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (srts_len: length srts = length (m_params m)):
   IndTypes.adt_rep m srts (mk_pd gamma pd) a a_in.
 Proof. 
   assert (Hpd1': forall ts srts (Hts: find_ts_in_ctx gamma ts = None), 
-    domain_nonempty (domain (mk_pd gamma pd)) (s_cons ts srts)).
+    domain_nonempty (mk_pd gamma pd) (s_cons ts srts)).
   {
     intros t' s' Ht'.
     constructor.
-    assert (Heq:domain (mk_pd gamma pd) (s_cons t' s') = mk_pd gamma pd (s_cons t' s')) by reflexivity.
-    rewrite Heq.
     rewrite mk_pd_nonadt; auto.
     apply Hpd1; auto.
   }
   assert (Hpd2': forall m a ts srts (Hts: find_ts_in_ctx gamma ts = Some (m, a)), 
     length srts <> length (m_params m) -> 
-    domain_nonempty (domain (mk_pd gamma pd)) (s_cons ts srts)).
+    domain_nonempty (mk_pd gamma pd) (s_cons ts srts)).
   {
     intros m' a' t' s' Ht' Hlen'.
     constructor.
-    assert (Heq:domain (mk_pd gamma pd) (s_cons t' s') = mk_pd gamma pd (s_cons t' s')) by reflexivity.
-    rewrite Heq.
     destruct (mk_pd_adt_nolen pd t' s' Ht' Hlen') as [Heq' | Heq'].
     + rewrite Heq'.
       specialize (Hpd2 _ _ _ s' Ht' Hlen'). destruct Hpd2 as [x]. exact x.
     + rewrite Heq'. exact tt.
   }
-  apply (all_adts_inhab gamma_valid (mk_pd gamma pd) Hpd1' Hpd2' (mk_pd_full _ pd gamma_valid) srts Hsrts); auto.
+  apply (all_adts_inhab gamma_valid (mk_pd gamma pd) (mk_pd_int _ _) (mk_pd_real _ _) Hpd1' Hpd2' (mk_pd_full _ pd gamma_valid) srts Hsrts); auto.
 Qed.
 
 (*And therefore, all types from [mk_pd] are inhabited if pd is full*)
-Theorem mk_pd_inhab {gamma} (gamma_valid: valid_context gamma) pd
-  (Hpdi: forall s, domain_nonempty (domain pd) s) :
-  forall s : sort, domain_nonempty (domain (mk_pd gamma pd)) s.
+Theorem mk_pd_inhab {gamma} (gamma_valid: valid_context gamma) (pd: sort -> Set)
+  (Hpdi: forall s, domain_nonempty pd s) :
+  forall s : sort, domain_nonempty (mk_pd gamma pd) s.
 Proof.
   intros s. induction s as [| | ts srts IH].
-  - constructor. unfold domain. simpl. exact 0%Z.
-  - constructor. unfold domain. simpl. exact 0%R.
-  - constructor. unfold domain. simpl sort_to_ty.
-    assert (Hpd: mk_pd gamma pd (s_cons ts srts)); [|auto].
+  - constructor. exact 0%Z.
+  - constructor. exact 0%R.
+  - constructor.
     (*Here, case on whether ADT or not*)
     destruct (find_ts_in_ctx gamma ts) as [[m a]|] eqn : Hts.
     + assert (Hfind:=Hts). apply find_ts_in_ctx_some in Hts. destruct Hts as [m_in [a_in Hts]]. subst.
@@ -942,7 +946,8 @@ Qed.
 (*And finally, we can construct a [pi_dom] that is full given any base [pi_dom]*)
 
 Definition mk_pi_dom {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom) : pi_dom :=
-  {| dom_aux := mk_pd gamma (dom_aux pd); domain_ne := mk_pd_inhab gamma_valid (dom_aux pd) (domain_ne pd) |}.
+  {| dom_aux := mk_pd gamma (dom_aux pd); dom_aux_int := mk_pd_int _ _; dom_aux_real := mk_pd_real _ _; 
+     domain_ne := mk_pd_inhab gamma_valid (dom_aux pd) (domain_ne pd) |}.
 
 Definition mk_pi_dom_full {gamma} (gamma_valid: valid_context gamma) 
   (pd: pi_dom)  : pi_dom_full gamma (mk_pi_dom gamma_valid pd) := 

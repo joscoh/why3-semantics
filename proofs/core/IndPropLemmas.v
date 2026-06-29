@@ -239,18 +239,18 @@ Fixpoint find_apply_pred (pi: pi_funpred gamma_valid pd)
 (*Our props are an hlist, where we have a Pi for each pi
 of type (srts -> arg_list pi srts -> bool)*)
 (Ps: hlist (fun (p: predsym) => forall srts, 
-  arg_list (domain (dom_aux pd)) 
+  arg_list (dom_aux pd) 
   (sym_sigma_args p srts) -> bool) ps) (p: predsym) :
   (forall srts : list sort,
-    arg_list (domain (dom_aux pd)) 
+    arg_list (dom_aux pd) 
       (sym_sigma_args p srts) -> bool) :=
   (match ps as ps' return
   (hlist (fun p : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd))
+    arg_list (dom_aux pd)
       (sym_sigma_args p srts) -> bool) ps') ->
     forall srts : list sort,
-      arg_list (domain (dom_aux pd)) 
+      arg_list (dom_aux pd) 
         (sym_sigma_args p srts) -> bool with
   (*Underneath the depednent types, this is quite
     simple: iterate through the list, compare for equality
@@ -268,7 +268,7 @@ Lemma find_apply_pred_in (pf: pi_funpred gamma_valid pd)
   (Ps: hlist
   (fun p' : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+    arg_list (dom_aux pd) (sym_sigma_args p' srts) -> bool)
   ps)
   (p: predsym)
   (Hinp: in_bool predsym_eq_dec p ps) :
@@ -286,7 +286,7 @@ Lemma find_apply_pred_notin (pf: pi_funpred gamma_valid pd)
 (Ps: hlist
 (fun p' : predsym =>
   forall srts : list sort,
-  arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+  arg_list (dom_aux pd) (sym_sigma_args p' srts) -> bool)
 ps)
 (p: predsym) :
 ~ In p ps ->
@@ -333,7 +333,7 @@ Section Def.
 
 Definition interp_with_P (pi: pi_funpred gamma_valid pd) (p: predsym) 
   (P: forall srts, 
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p srts) -> bool) :
+    arg_list (dom_aux pd) (sym_sigma_args p srts) -> bool) :
   pi_funpred gamma_valid pd :=
   {|
     funs := funs gamma_valid pd pi;
@@ -356,7 +356,7 @@ Definition interp_with_Ps (pi: pi_funpred gamma_valid pd)
   (*Our props are an hlist, where we have a Pi for each pi
   of type (srts -> arg_list pi srts -> bool)*)
   (Ps: hlist (fun (p: predsym) => forall srts, 
-    arg_list (domain (dom_aux pd)) 
+    arg_list (dom_aux pd) 
     (sym_sigma_args p srts) -> bool) ps) :
   pi_funpred gamma_valid pd :=
   {|
@@ -368,7 +368,7 @@ Definition interp_with_Ps (pi: pi_funpred gamma_valid pd)
 Lemma interp_with_Ps_single (pi: pi_funpred gamma_valid pd)
   (p: predsym)
   (Ps: hlist (fun (p:predsym) => forall srts, 
-    arg_list (domain (dom_aux pd)) 
+    arg_list (dom_aux pd) 
     (sym_sigma_args p srts) -> bool) [p]) :
   interp_with_Ps pi [p] Ps =
   interp_with_P pi p (hlist_hd Ps).

@@ -40,8 +40,8 @@ Notation new_constr := (new_constr new_constr_name badnames).
 
 (*Part 1: new constructors are old constructors*)
 Definition new_constr_interp (c: funsym) (srts: list sort):
-  arg_list (domain (dom_aux pd)) (sym_sigma_args (new_constr c) srts) ->
-  domain (dom_aux pd) (funsym_sigma_ret (new_constr c) srts) := fun a =>
+  arg_list (dom_aux pd) (sym_sigma_args (new_constr c) srts) ->
+  dom_aux pd (funsym_sigma_ret (new_constr c) srts) := fun a =>
   funs gamma_valid pd pf c srts a.
 
 (*Main part: Projections mapped to appropriate elements of [arg_list]*)
@@ -127,11 +127,11 @@ Qed.
   construct an adt_rep*)
 Definition get_hd_adt_rep {m a f} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   {srts: list sort} (srts_len: length srts = length (m_params m))
-  (args: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+  (args: arg_list (dom_aux pd) (sym_sigma_args f srts))
   (Heq: sym_sigma_args f srts = [s_cons (adt_name a) srts]):
   { x: adt_rep pd a srts |
     args = cast_arg_list (eq_sym Heq)
-      (HL_cons (domain (dom_aux pd)) _ _  x (HL_nil _))}.
+      (HL_cons (dom_aux pd) _ _  x (HL_nil _))}.
 Proof.
   (*This proof can be opaque, since we give the rewrite rule in a sigma type*)
   generalize dependent args.
@@ -155,11 +155,11 @@ Definition proj_args_eq (c: funsym) (f: funsym) (n: nat)
   (c_in: constr_in_adt c a)
   (srts: list sort) 
   (srts_len: length srts = length (m_params m))
-  (args: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)):
+  (args: arg_list (dom_aux pd) (sym_sigma_args f srts)):
   { x: adt_rep pd a srts |
     args = cast_arg_list (eq_sym (projection_syms_sigma_args srts (in_proj_syms Hn f_nth) 
       m_in a_in c_in srts_len)) 
-      (HL_cons (domain (dom_aux pd)) _ _ x (HL_nil _))}.
+      (HL_cons (dom_aux pd) _ _ x (HL_nil _))}.
 Proof.
   apply (get_hd_adt_rep m_in); auto.
 Qed.
@@ -187,8 +187,8 @@ Definition proj_interp (c: funsym) (f: funsym) (n: nat)
   {m: mut_adt} {a: alg_datatype} 
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m) (c_in: constr_in_adt c a)
   (srts: list sort) (srts_len: length srts = length (m_params m))
-  (args: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)) :
-  domain (dom_aux pd) (funsym_sigma_ret f srts) :=
+  (args: arg_list (dom_aux pd) (sym_sigma_args f srts)) :
+  dom_aux pd (funsym_sigma_ret f srts) :=
   (*Step 1: we know (from [proj_args_eq]) that args is really just an [adt_rep] x*)
   let x := proj1_sig (proj_args_eq c f n 
     (proj1 (Nat.ltb_lt _ _) Hn) f_nth m_in a_in c_in srts srts_len args) in
@@ -292,10 +292,10 @@ Qed.
 (*Now a lemma letting us get the [arg_list]*)
 Lemma selector_args_eq {m a} csl (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (s1: sort) (srts: list sort) (srts_len: length srts = length (m_params m))
-  (args: arg_list (domain (dom_aux pd)) 
+  (args: arg_list (dom_aux pd) 
     (sym_sigma_args (selector_funsym badnames (adt_name a) csl) (s1 :: srts))):
   {x : adt_rep pd a srts * 
-    arg_list (domain (dom_aux pd)) (repeat s1 (length csl)) |
+    arg_list (dom_aux pd) (repeat s1 (length csl)) |
     args = cast_arg_list (eq_sym (selector_sigma_args csl m_in a_in srts_len)) 
       (HL_cons _ (s_cons (adt_name a) srts) _ (fst x) (snd x))
   }.
@@ -324,9 +324,9 @@ Qed.
 
 Definition selector_interp {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (s1: sort) (srts: list sort) (srts_len: length srts = length (m_params m))
-   (args: arg_list (domain (dom_aux pd)) 
+   (args: arg_list (dom_aux pd) 
     (sym_sigma_args (selector_funsym badnames (adt_name a) (adt_constr_list a)) (s1 :: srts))):
-  domain (dom_aux pd) (funsym_sigma_ret (selector_funsym badnames (adt_name a) (adt_constr_list a)) (s1 :: srts)) :=
+  dom_aux pd (funsym_sigma_ret (selector_funsym badnames (adt_name a) (adt_constr_list a)) (s1 :: srts)) :=
   let csl := (adt_constr_list a) in
   (*Step 1: we know from [selector_args_eq] that args first has an [adt_rep]*)
   let x := proj1_sig (selector_args_eq csl m_in a_in s1 srts srts_len args) in
@@ -388,10 +388,10 @@ Definition indexer_args_eq
   (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   {srts: list sort} 
   (srts_len: length srts = length (m_params m))
-  (args: arg_list (domain (dom_aux pd)) (sym_sigma_args (indexer_funsym badnames (adt_name a)) srts)):
+  (args: arg_list (dom_aux pd) (sym_sigma_args (indexer_funsym badnames (adt_name a)) srts)):
   { x: adt_rep pd a srts |
     args = cast_arg_list (eq_sym (indexer_sigma_args m_in a_in srts_len)) 
-      (HL_cons (domain (dom_aux pd)) _ _ x (HL_nil _))}.
+      (HL_cons (dom_aux pd) _ _ x (HL_nil _))}.
 Proof.
   apply (get_hd_adt_rep m_in); auto.
 Qed.
@@ -407,9 +407,9 @@ Qed.
 
 Definition indexer_interp {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m)
   (srts: list sort) (srts_len: length srts = length (m_params m))
-  (args: arg_list (domain (dom_aux pd))
+  (args: arg_list (dom_aux pd)
     (sym_sigma_args (indexer_funsym badnames (adt_name a)) srts)):
-  domain (dom_aux pd) (funsym_sigma_ret (indexer_funsym badnames (adt_name a)) srts) :=
+  dom_aux pd (funsym_sigma_ret (indexer_funsym badnames (adt_name a)) srts) :=
   (*Step 1: get ADT rep*)
   let x := proj1_sig (indexer_args_eq m_in a_in srts_len args) in
   (*Step 2: use [find_constr_rep] on x to get the constructor and arguments*)
@@ -417,7 +417,7 @@ Definition indexer_interp {m a} (m_in: mut_in_ctx m gamma) (a_in: adt_in_mut a m
   let c1 : funsym := projT1 Hrep in
   (*Now just get the index of c1 in the constr list*)
   let y := Z.of_nat (index funsym_eq_dec c1 (adt_constr_list a)) in
-  dom_cast (dom_aux pd) (indexer_sigma_ret (adt_name a) srts) y.
+  dom_cast (dom_aux pd) (indexer_sigma_ret (adt_name a) srts) (int_to_dom pd y).
 
 (*Put everything together and define the full function*)
 
@@ -497,14 +497,14 @@ Proof.
   apply in_index, Hinf.
 Qed.
 
-(*Easier to create list of {f: funsym & a: domain (dom_aux pd) (funsym_sigma_ret f srts)}
+(*Easier to create list of {f: funsym & a: dom_aux pd (funsym_sigma_ret f srts)}
   Then function is just going through list *)
 
 (*function for single ADT*)
 Definition funs_new_map_single (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx m gamma)
   (a: alg_datatype) (a_in: adt_in_mut a m) : 
-  list {g: funsym & arg_list (domain (dom_aux pd)) (sym_sigma_args g srts) ->
-    domain (dom_aux pd) (funsym_sigma_ret g srts)} :=
+  list {g: funsym & arg_list (dom_aux pd) (sym_sigma_args g srts) ->
+    dom_aux pd (funsym_sigma_ret g srts)} :=
   (*First, add new constructors*)
     map (fun c => 
       existT (new_constr c) (new_constr_interp c srts)
@@ -547,8 +547,8 @@ Definition funs_new_map_single (srts: list sort) (m: mut_adt) (m_in: mut_in_ctx 
 Definition funs_new_map
   (g2: context) (g2_sub: sublist (mut_of_context g2) (mut_of_context gamma)) 
   (srts: list sort) :
-  list {g: funsym & arg_list (domain (dom_aux pd)) (sym_sigma_args g srts) ->
-    domain (dom_aux pd) (funsym_sigma_ret g srts)} :=
+  list {g: funsym & arg_list (dom_aux pd) (sym_sigma_args g srts) ->
+    dom_aux pd (funsym_sigma_ret g srts)} :=
   concat (map_adts g2 g2_sub (funs_new_map_single srts)).
 
 (*The specs*)
@@ -566,8 +566,8 @@ Definition funs_new_map_single_in (srts: list sort) (m: mut_adt) (m_in: mut_in_c
             (index_nth funsym_eq_dec id_fs Hinf) m_in a_in c_in srts srts_len)
     ) \/
   (*selector - awkward to phrase for dependent types*)
-  (match srts as s return {g: funsym & arg_list (domain (dom_aux pd)) (sym_sigma_args g s) ->
-    domain (dom_aux pd) (funsym_sigma_ret g s)} -> Prop with
+  (match srts as s return {g: funsym & arg_list (dom_aux pd) (sym_sigma_args g s) ->
+    dom_aux pd (funsym_sigma_ret g s)} -> Prop with
     | s1 :: srts1 => fun x => exists (srts_len: length srts1 = length (m_params m)),
       x = existT (selector_funsym badnames (adt_name a) (adt_constr_list a))
           (selector_interp m_in a_in s1 srts1 srts_len)
@@ -1647,8 +1647,8 @@ Qed.
 
 
 Definition funs_new (f: funsym) (srts: list sort)
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts)):
-  domain (dom_aux pd) (funsym_sigma_ret f srts) :=
+  (a: arg_list (dom_aux pd) (sym_sigma_args f srts)):
+  dom_aux pd (funsym_sigma_ret f srts) :=
   match dep_assoc_list_lookup funsym_eq_dec f (funs_new_map gamma (sublist_refl _) srts) with
   | Some x => x a
   | None => (funs gamma_valid pd pf f srts a) 
@@ -1823,7 +1823,7 @@ Qed.
 
 (*Prove that [adt_interp_props] holds of the new interp.*)
 Lemma funs_new_adt_props (new_gamma_valid: valid_context (new_gamma gamma)) :
-  adt_interp_props new_gamma_valid (dom_aux pd) funs_new_full.
+  adt_interp_props new_gamma_valid (dom_aux pd) (dom_aux_int pd) funs_new_full.
 Proof.
   apply (pf_same_constrs_adt_props gamma_valid new_gamma_valid) with (pf1:=funs gamma_valid pd pf).
   - intros m m_in.

@@ -1923,14 +1923,14 @@ Definition inv_Ps {gamma} (gamma_valid: valid_context gamma)
 
   hlist (fun p' : predsym =>
   forall srts : list sort,
-  arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+  arg_list (dom_aux pd) (sym_sigma_args p' srts) -> bool)
   (map fst (get_indpred l)) :=
 
   gen_hlist (fun p' : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+    arg_list (dom_aux pd) (sym_sigma_args p' srts) -> bool)
     (fun (p': predsym) =>
-      fun (srts: list sort) (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts)) =>
+      fun (srts: list sort) (a: arg_list (dom_aux pd) (sym_sigma_args p' srts)) =>
       (*Body of function*)
       (*We need srts to be correct*)
       match (list_eq_dec sort_eq_dec srts 
@@ -2064,7 +2064,7 @@ Qed.
 
 Lemma cast_preds {gamma} (gamma_valid: valid_context gamma) (pd: pi_dom)
   (pf: pi_funpred gamma_valid pd) (p: predsym) (srts1 srts2: list sort)
-  (Heq: srts1 = srts2) (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts1)):
+  (Heq: srts1 = srts2) (a: arg_list (dom_aux pd) (sym_sigma_args p srts1)):
   preds gamma_valid pd pf p srts1 a =
   preds gamma_valid pd pf p srts2 (cast_arg_list (f_equal (sym_sigma_args p) Heq) a).
 Proof.

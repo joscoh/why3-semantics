@@ -118,7 +118,7 @@ Definition full_interp {gamma}
   (f: funsym) (args: list vsymbol) (body: term)
   (f_in: fun_defined gamma f args body)
   (srts: list sort) (srts_len: length srts = length (s_params f))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args f srts))
+  (a: arg_list (dom_aux pd) (sym_sigma_args f srts))
   (vt: val_typevar)
   (vv: val_vars pd vt),
   funs gamma_valid pd pf f srts a =
@@ -136,7 +136,7 @@ Definition full_interp {gamma}
   (p: predsym) (args: list vsymbol) (body: formula)
   (p_in: pred_defined gamma p args body)
   (srts: list sort) (srts_len: length srts = length (s_params p))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+  (a: arg_list (dom_aux pd) (sym_sigma_args p srts))
   (vt: val_typevar)
   (vv: val_vars pd vt),
   preds gamma_valid pd pf p srts a =
@@ -171,7 +171,7 @@ Definition full_interp {gamma}
   (fs: list formula)
   (srts: list sort)
   (srts_len: length srts = length (s_params p))
-  (a: arg_list (domain (dom_aux pd)) (sym_sigma_args p srts))
+  (a: arg_list (dom_aux pd) (sym_sigma_args p srts))
   (vt: val_typevar)
   (vv: val_vars pd (vt_with_args vt (s_params p) srts)),
 
@@ -179,7 +179,7 @@ Definition full_interp {gamma}
   forall (Ps: hlist
     (fun p' : predsym =>
     forall srts : list sort,
-    arg_list (domain (dom_aux pd)) (sym_sigma_args p' srts) -> bool)
+    arg_list (dom_aux pd) (sym_sigma_args p' srts) -> bool)
     (map fst l)),
   (*If the constructors hold when ps -> Ps (ith of ps -> ith of Ps)*)
   (forall (fs : list formula) (Hform : Forall (formula_typed gamma) fs),
